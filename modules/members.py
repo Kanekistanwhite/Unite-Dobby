@@ -1,18 +1,21 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-from services.member_service import add_member, get_active_members
+from services.member_service import (
+    add_member,
+    get_active_members_with_planners,
+    set_birthday_planner,
+)
 from services.permissions import is_approved_leader
 
 
-async def add_member_command(
+async def check_leader_permission(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> None:
-    """Add a member using /addmember Name | DD-MM | leader."""
+) -> bool:
+    """Check whether the user may use member-management commands."""
 
     if update.message is None:
-        return
+        return False
 
     user = update.effective_user
 
@@ -22,6 +25,21 @@ async def add_member_command(
         await update.message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
+        return False
+
+    return True
+
+
+async def add_member_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Add a member using /addmember Name | DD-MM | leader."""
+
+    if not await check_leader_permission(update):
+        return
+
+    if update.message is None:
         return
 
     command_text = update.message.text or ""
@@ -63,13 +81,10 @@ async def add_member_command(
     try:
         day_text, month_text = birthday_text.split("-")
 
-        birthday_day = int(day_text)
-        birthday_month = int(month_text)
-
         member = add_member(
             display_name=display_name,
-            birthday_day=birthday_day,
-            birthday_month=birthday_month,
+            birthday_day=int(day_text),
+            birthday_month=int(month_text),
             is_leader=is_leader,
         )
 
@@ -95,26 +110,77 @@ async def add_member_command(
     )
 
 
-async def list_members_command(
+async def set_planner_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """List all active members."""
+    """Assign a birthday planner using /setplanner Member | Planner."""
+
+    if not await check_leader_permission(update):
+        return
 
     if update.message is None:
         return
 
-    user = update.effective_user
+    command_text = update.message.text or ""
 
-    if not is_approved_leader(
-        user.id if user else None
-    ):
+    try:
+        details = command_text.split(
+            " ",
+            maxsplit=1,
+        )[1]
+    except IndexError:
         await update.message.reply_text(
-            "⛔ This command is only available to approved leaders."
+            "Usage:\n"
+            "/setplanner Member | Planner\n\n"
+            "Example:\n"
+            "/setplanner Charlotte | Gordon"
         )
         return
 
-    members = get_active_members()
+    parts = [
+        part.strip()
+        for part in details.split("|")
+    ]
+
+    if len(parts) != 2:
+        await update.message.reply_text(
+            "Please use this format:\n"
+            "/setplanner Member | Planner"
+        )
+        return
+
+    try:
+        member, planner = set_birthday_planner(
+            member_name=parts[0],
+            planner_name=parts[1],
+        )
+    except ValueError as error:
+        await update.message.reply_text(
+            f"❌ {error}"
+        )
+        return
+
+    await update.message.reply_text(
+        "✅ Birthday planner assigned\n\n"
+        f"Member: {member.display_name}\n"
+        f"Planner: {planner.display_name}"
+    )
+
+
+async def list_members_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """List active members and their birthday planners."""
+
+    if not await check_leader_permission(update):
+        return
+
+    if update.message is None:
+        return
+
+    members = get_active_members_with_planners()
 
     if not members:
         await update.message.reply_text(
@@ -124,14 +190,20 @@ async def list_members_command(
 
     member_lines = []
 
-    for number, member in enumerate(
+    for number, (member, planner_name) in enumerate(
         members,
         start=1,
     ):
-        birthday = (
-            f"{member.birthday_day:02d}-"
-            f"{member.birthday_month:02d}"
-        )
+        if (
+            member.birthday_day is not None
+            and member.birthday_month is not None
+        ):
+            birthday = (
+                f"{member.birthday_day:02d}-"
+                f"{member.birthday_month:02d}"
+            )
+        else:
+            birthday = "Not set"
 
         leader_label = (
             " 👑"
@@ -139,14 +211,17 @@ async def list_members_command(
             else ""
         )
 
+        planner = planner_name or "Not assigned"
+
         member_lines.append(
             f"{number}. {member.display_name}"
-            f"{leader_label} — {birthday}"
+            f"{leader_label} — {birthday}\n"
+            f"   🎁 Planner: {planner}"
         )
 
     await update.message.reply_text(
         "👥 Unite Dobby Members\n\n"
-        + "\n".join(member_lines)
+        + "\n\n".join(member_lines)
     )
 
 
@@ -159,6 +234,13 @@ def register_member_handlers(
         CommandHandler(
             "addmember",
             add_member_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "setplanner",
+            set_planner_command,
         )
     )
 
