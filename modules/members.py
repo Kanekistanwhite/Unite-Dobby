@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from services.member_service import add_member, get_active_members
+from services.permissions import is_approved_leader
 
 
 async def add_member_command(
@@ -11,6 +12,16 @@ async def add_member_command(
     """Add a member using /addmember Name | DD-MM | leader."""
 
     if update.message is None:
+        return
+
+    user = update.effective_user
+
+    if not is_approved_leader(
+        user.id if user else None
+    ):
+        await update.message.reply_text(
+            "⛔ This command is only available to approved leaders."
+        )
         return
 
     command_text = update.message.text or ""
@@ -43,6 +54,7 @@ async def add_member_command(
 
     display_name = parts[0]
     birthday_text = parts[1]
+
     is_leader = (
         len(parts) == 3
         and parts[2].lower() == "leader"
@@ -50,6 +62,7 @@ async def add_member_command(
 
     try:
         day_text, month_text = birthday_text.split("-")
+
         birthday_day = int(day_text)
         birthday_month = int(month_text)
 
@@ -86,9 +99,19 @@ async def list_members_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """List active members."""
+    """List all active members."""
 
     if update.message is None:
+        return
+
+    user = update.effective_user
+
+    if not is_approved_leader(
+        user.id if user else None
+    ):
+        await update.message.reply_text(
+            "⛔ This command is only available to approved leaders."
+        )
         return
 
     members = get_active_members()
