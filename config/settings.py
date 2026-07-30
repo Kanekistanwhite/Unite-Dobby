@@ -4,12 +4,33 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
+# Locate the main Unite Dobby project folder.
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+ENV_FILE = BASE_DIR / ".env"
+
+# Load private settings from .env.
+load_dotenv(ENV_FILE)
 
 
-def parse_user_ids(value: str) -> set[int]:
-    """Convert comma-separated Telegram IDs into integers."""
+def require_environment_variable(
+    variable_name: str,
+) -> str:
+    """Read a required environment variable."""
+
+    value = os.getenv(variable_name, "").strip()
+
+    if not value:
+        raise RuntimeError(
+            f"{variable_name} is missing from the .env file."
+        )
+
+    return value
+
+
+def parse_user_ids(
+    value: str,
+) -> set[int]:
+    """Convert comma-separated Telegram user IDs into integers."""
 
     user_ids: set[int] = set()
 
@@ -30,8 +51,10 @@ def parse_user_ids(value: str) -> set[int]:
     return user_ids
 
 
-def read_optional_int(variable_name: str) -> int | None:
-    """Read an optional integer from the environment."""
+def read_optional_int(
+    variable_name: str,
+) -> int | None:
+    """Read an optional integer environment variable."""
 
     value = os.getenv(variable_name, "").strip()
 
@@ -50,14 +73,14 @@ def read_boolean(
     variable_name: str,
     default: bool = False,
 ) -> bool:
-    """Read a true-or-false environment setting."""
+    """Read a true-or-false environment variable."""
 
-    default_text = "true" if default else "false"
+    raw_value = os.getenv(variable_name)
 
-    value = os.getenv(
-        variable_name,
-        default_text,
-    ).strip().lower()
+    if raw_value is None or not raw_value.strip():
+        return default
+
+    value = raw_value.strip().lower()
 
     if value not in {"true", "false"}:
         raise RuntimeError(
@@ -67,33 +90,44 @@ def read_boolean(
     return value == "true"
 
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-
-if not BOT_TOKEN:
-    raise RuntimeError(
-        "BOT_TOKEN is missing. Check that the .env file exists "
-        "and contains BOT_TOKEN=your_token."
-    )
-
+# Telegram bot configuration.
+BOT_TOKEN = require_environment_variable(
+    "BOT_TOKEN"
+)
 
 LEADER_USER_IDS = parse_user_ids(
     os.getenv("LEADER_USER_IDS", "")
 )
 
 
+# Birthday greeting configuration.
 BIRTHDAY_CHAT_ID = read_optional_int(
     "BIRTHDAY_CHAT_ID"
 )
 
 BIRTHDAY_SCHEDULER_ENABLED = read_boolean(
-    "BIRTHDAY_SCHEDULER_ENABLED"
+    "BIRTHDAY_SCHEDULER_ENABLED",
+    default=False,
 )
 
 
+# Sunday attendance configuration.
 SUNDAY_CHAT_ID = read_optional_int(
     "SUNDAY_CHAT_ID"
 )
 
 SUNDAY_SCHEDULER_ENABLED = read_boolean(
-    "SUNDAY_SCHEDULER_ENABLED"
+    "SUNDAY_SCHEDULER_ENABLED",
+    default=False,
+)
+
+
+# Bi-weekly attendance configuration.
+BIWEEKLY_CHAT_ID = read_optional_int(
+    "BIWEEKLY_CHAT_ID"
+)
+
+BIWEEKLY_SCHEDULER_ENABLED = read_boolean(
+    "BIWEEKLY_SCHEDULER_ENABLED",
+    default=False,
 )

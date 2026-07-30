@@ -135,7 +135,15 @@ BIRTHDAY_ROSTER = [
 
 
 def seed_birthday_roster() -> tuple[int, int, int]:
-    """Add or update the complete birthday roster."""
+    """
+    Add or update the complete birthday roster.
+
+    Returns:
+        A tuple containing:
+        - members created
+        - members updated
+        - planner assignments updated
+    """
 
     with SessionLocal() as session:
         existing_members = session.scalars(
@@ -151,7 +159,7 @@ def seed_birthday_roster() -> tuple[int, int, int]:
         updated_count = 0
         planner_count = 0
 
-        # First pass: create or update all members.
+        # First pass: create missing members and update details.
         for entry in BIRTHDAY_ROSTER:
             member_key = entry["name"].casefold()
             member = members_by_name.get(member_key)
@@ -186,6 +194,7 @@ def seed_birthday_roster() -> tuple[int, int, int]:
 
                 username = entry["username"]
 
+                # Do not erase an existing username when none is supplied.
                 if (
                     username is not None
                     and member.telegram_username != username
@@ -196,7 +205,7 @@ def seed_birthday_roster() -> tuple[int, int, int]:
                 if details_changed:
                     updated_count += 1
 
-        # Give newly created members their database IDs.
+        # Generate database IDs for newly created members.
         session.flush()
 
         # Second pass: assign birthday planners.
@@ -226,7 +235,7 @@ def get_birthdays_for_date(
     day: int,
     month: int,
 ) -> list[tuple[str, str | None]]:
-    """Return active members whose birthday matches a date."""
+    """Return active members whose birthday matches the date."""
 
     with SessionLocal() as session:
         rows = session.execute(
@@ -251,7 +260,7 @@ def get_birthdays_for_date(
 def get_birthday_member_by_name(
     display_name: str,
 ) -> tuple[str, str | None] | None:
-    """Find an active member by display name."""
+    """Find an active birthday member using their display name."""
 
     cleaned_name = display_name.strip()
 
