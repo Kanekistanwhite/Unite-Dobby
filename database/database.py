@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -5,10 +6,24 @@ from sqlalchemy.engine import URL
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 
-DATABASE_DIRECTORY = Path(__file__).resolve().parent
-DATABASE_DIRECTORY.mkdir(parents=True, exist_ok=True)
+# Local development uses database/unite_dobby.db.
+# Railway will override this with DATABASE_PATH=/data/unite_dobby.db.
+DEFAULT_DATABASE_PATH = (
+    Path(__file__).resolve().parent
+    / "unite_dobby.db"
+)
 
-DATABASE_PATH = DATABASE_DIRECTORY / "unite_dobby.db"
+DATABASE_PATH = Path(
+    os.getenv(
+        "DATABASE_PATH",
+        str(DEFAULT_DATABASE_PATH),
+    )
+).expanduser()
+
+DATABASE_PATH.parent.mkdir(
+    parents=True,
+    exist_ok=True,
+)
 
 DATABASE_URL = URL.create(
     drivername="sqlite",
@@ -24,7 +39,9 @@ class Base(DeclarativeBase):
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    connect_args={
+        "check_same_thread": False,
+    },
 )
 
 SessionLocal = sessionmaker(
@@ -40,4 +57,6 @@ def init_database() -> None:
     import models.biweekly_event  # noqa: F401
     import models.member  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(
+        bind=engine,
+    )
