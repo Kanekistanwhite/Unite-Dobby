@@ -42,10 +42,19 @@ def build_birthday_message(
     )
 
 
+def leader_is_approved(update: Update) -> bool:
+    """Check whether the person using the command is an approved leader."""
+
+    user = update.effective_user
+    user_id = user.id if user else None
+
+    return is_approved_leader(user_id)
+
+
 async def send_daily_birthday_greetings(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Check today's birthdays and send birthday greetings."""
+    """Check today's birthdays and send automatic greetings."""
 
     if BIRTHDAY_CHAT_ID is None:
         logger.warning(
@@ -90,15 +99,12 @@ async def test_birthday_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Preview a birthday greeting without posting automatically."""
+    """Show a birthday-message preview."""
 
     if update.message is None:
         return
 
-    user = update.effective_user
-    user_id = user.id if user else None
-
-    if not is_approved_leader(user_id):
+    if not leader_is_approved(update):
         await update.message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
@@ -125,23 +131,93 @@ async def test_birthday_command(
 
     display_name, telegram_username = member
 
+    await update.message.reply_text(
+        "🧪 Birthday greeting preview\n\n"
+        + build_birthday_message(
+            display_name=display_name,
+            telegram_username=telegram_username,
+        )
+    )
+
+
+async def send_birthday_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """
+    Send a real birthday greeting into the current chat.
+
+    Use only inside the private test group during development.
+    """
+
+    if update.message is None:
+        return
+
+    if not leader_is_approved(update):
+        await update.message.reply_text(
+            "⛔ This command is only available to approved leaders."
+        )
+        return
+
+    chat = update.effective_chat
+
+    if chat is None:
+        return
+
+    member_name = " ".join(context.args).strip()
+
+    if not member_name:
+        await update.message.reply_text(
+            "Usage:\n"
+            "/sendbirthday Member Name\n\n"
+            "Example:\n"
+            "/sendbirthday Kelly"
+        )
+        return
+
+    member = get_birthday_member_by_name(member_name)
+
+    if member is None:
+        await update.message.reply_text(
+            f"❌ Member '{member_name}' was not found."
+        )
+        return
+
+    display_name, telegram_username = member
+
     message = build_birthday_message(
         display_name=display_name,
         telegram_username=telegram_username,
     )
 
-    await update.message.reply_text(message)
+    await context.bot.send_message(
+        chat_id=chat.id,
+        text=message,
+    )
+
+    logger.info(
+        "Manual birthday greeting sent for %s in chat %s.",
+        display_name,
+        chat.id,
+    )
 
 
 def register_birthday_handlers(
     application: Application,
 ) -> None:
-    """Register birthday commands and the optional daily schedule."""
+    """Register birthday commands and the optional scheduler."""
 
     application.add_handler(
         CommandHandler(
             "testbirthday",
             test_birthday_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "sendbirthday",
+            send_birthday_command,
         )
     )
 
