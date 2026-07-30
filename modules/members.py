@@ -1,6 +1,6 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-
+from services.birthday_service import seed_birthday_roster
 from services.member_service import (
     add_member,
     get_active_members_with_planners,
@@ -224,7 +224,34 @@ async def list_members_command(
         + "\n\n".join(member_lines)
     )
 
+async def setup_birthdays_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Import the complete life-group birthday roster."""
 
+    if not await check_leader_permission(update):
+        return
+
+    if update.message is None:
+        return
+
+    try:
+        created, updated, planners = seed_birthday_roster()
+    except Exception:
+        await update.message.reply_text(
+            "❌ Dobby could not import the birthday roster.\n"
+            "Please check the terminal for the error."
+        )
+        raise
+
+    await update.message.reply_text(
+        "✅ Birthday roster imported\n\n"
+        f"New members added: {created}\n"
+        f"Existing members updated: {updated}\n"
+        f"Planner assignments updated: {planners}\n\n"
+        "Use /listmembers to check the roster."
+    )
 def register_member_handlers(
     application: Application,
 ) -> None:
@@ -248,5 +275,12 @@ def register_member_handlers(
         CommandHandler(
             "listmembers",
             list_members_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "setupbirthdays",
+            setup_birthdays_command,
         )
     )
