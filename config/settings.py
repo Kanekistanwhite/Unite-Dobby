@@ -37,3 +37,23 @@ if not BOT_TOKEN:
         "BOT_TOKEN is missing. Check that the .env file exists "
         "and contains BOT_TOKEN=your_token."
     )
+BIRTHDAY_CHAT_ID_TEXT = os.getenv(
+    "BIRTHDAY_CHAT_ID",
+    "",
+).strip()
+
+BIRTHDAY_CHAT_ID = (
+    int(BIRTHDAY_CHAT_ID_TEXT)
+    if BIRTHDAY_CHAT_ID_TEXT
+    else None
+)
+
+BIRTHDAY_SCHEDULER_ENABLED = (
+    os.getenv(
+        "BIRTHDAY_SCHEDULER_ENABLED",
+        "false",
+    )
+    .strip()
+    .lower()
+    == "true"
+)

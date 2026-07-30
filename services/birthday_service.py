@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from database.database import SessionLocal
 from models.member import Member
@@ -135,15 +135,7 @@ BIRTHDAY_ROSTER = [
 
 
 def seed_birthday_roster() -> tuple[int, int, int]:
-    """
-    Add or update the complete birthday roster.
-
-    Returns:
-        A tuple containing:
-        - number of new members created
-        - number of existing members updated
-        - number of planner assignments updated
-    """
+    """Add or update the complete birthday roster."""
 
     with SessionLocal() as session:
         existing_members = session.scalars(
@@ -159,17 +151,14 @@ def seed_birthday_roster() -> tuple[int, int, int]:
         updated_count = 0
         planner_count = 0
 
-        # First pass:
-        # Create missing members and update birthdays/usernames.
+        # First pass: create or update all members.
         for entry in BIRTHDAY_ROSTER:
-            member_name = entry["name"]
-            member_key = member_name.casefold()
-
+            member_key = entry["name"].casefold()
             member = members_by_name.get(member_key)
 
             if member is None:
                 member = Member(
-                    display_name=member_name,
+                    display_name=entry["name"],
                     birthday_day=entry["day"],
                     birthday_month=entry["month"],
                     telegram_username=entry["username"],
@@ -197,7 +186,6 @@ def seed_birthday_roster() -> tuple[int, int, int]:
 
                 username = entry["username"]
 
-                # Do not erase an existing username when the roster has none.
                 if (
                     username is not None
                     and member.telegram_username != username
@@ -208,11 +196,10 @@ def seed_birthday_roster() -> tuple[int, int, int]:
                 if details_changed:
                     updated_count += 1
 
-        # Assign IDs to newly created members before linking planners.
+        # Give newly created members their database IDs.
         session.flush()
 
-        # Second pass:
-        # Assign each member's birthday planner.
+        # Second pass: assign birthday planners.
         for entry in BIRTHDAY_ROSTER:
             member = members_by_name[
                 entry["name"].casefold()
@@ -233,3 +220,58 @@ def seed_birthday_roster() -> tuple[int, int, int]:
             updated_count,
             planner_count,
         )
+
+
+def get_birthdays_for_date(
+    day: int,
+    month: int,
+) -> list[tuple[str, str | None]]:
+    """Return active members whose birthday matches a date."""
+
+    with SessionLocal() as session:
+        rows = session.execute(
+            select(
+                Member.display_name,
+                Member.telegram_username,
+            )
+            .where(
+                Member.is_active.is_(True),
+                Member.birthday_day == day,
+                Member.birthday_month == month,
+            )
+            .order_by(Member.display_name)
+        ).all()
+
+        return [
+            (display_name, telegram_username)
+            for display_name, telegram_username in rows
+        ]
+
+
+def get_birthday_member_by_name(
+    display_name: str,
+) -> tuple[str, str | None] | None:
+    """Find an active member by display name."""
+
+    cleaned_name = display_name.strip()
+
+    if not cleaned_name:
+        return None
+
+    with SessionLocal() as session:
+        row = session.execute(
+            select(
+                Member.display_name,
+                Member.telegram_username,
+            )
+            .where(
+                Member.is_active.is_(True),
+                func.lower(Member.display_name)
+                == cleaned_name.lower(),
+            )
+        ).one_or_none()
+
+        if row is None:
+            return None
+
+        return row[0], row[1]
