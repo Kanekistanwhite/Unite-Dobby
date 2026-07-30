@@ -1,41 +1,169 @@
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+import logging
+from datetime import time
+from zoneinfo import ZoneInfo
+
+from telegram import Bot, Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+)
+
+from config.settings import (
+    SUNDAY_CHAT_ID,
+    SUNDAY_SCHEDULER_ENABLED,
+)
+from services.permissions import is_approved_leader
 
 
-async def test_sunday(
+logger = logging.getLogger(__name__)
+
+SINGAPORE_TIMEZONE = ZoneInfo("Asia/Singapore")
+
+SUNDAY_POLL_OPTIONS = [
+    "Morning Service",
+    "Lunch",
+    "Youth Service",
+    "Hangout Afterwards",
+    "CMI All",
+]
+
+
+def leader_is_approved(update: Update) -> bool:
+    """Check whether the user is an approved leader."""
+
+    user = update.effective_user
+    user_id = user.id if user else None
+
+    return is_approved_leader(user_id)
+
+
+async def post_sunday_poll(
+    bot: Bot,
+    chat_id: int,
+) -> None:
+    """Post the Sunday attendance message and native poll."""
+
+    await bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "⛪ Sunday Attendance\n\n"
+            "Select everything you can attend.\n"
+            "Choose CMI All only if you cannot make it "
+            "for anything."
+        ),
+    )
+
+    await bot.send_poll(
+        chat_id=chat_id,
+        question="Attendance for this Sunday",
+        options=SUNDAY_POLL_OPTIONS,
+        is_anonymous=False,
+        allows_multiple_answers=True,
+        allows_revoting=True,
+    )
+
+    logger.info(
+        "Sunday attendance poll sent to chat %s.",
+        chat_id,
+    )
+
+
+async def send_sunday_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Create a test Sunday attendance poll."""
+    """Post a real Sunday poll into the current test chat."""
+
+    if update.message is None:
+        return
+
+    if not leader_is_approved(update):
+        await update.message.reply_text(
+            "⛔ This command is only available to approved leaders."
+        )
+        return
+
     chat = update.effective_chat
 
     if chat is None:
         return
 
-    await context.bot.send_message(
+    await post_sunday_poll(
+        bot=context.bot,
         chat_id=chat.id,
-        text=(
-            "⛪ Sunday Attendance\n\n"
-            "Select everything you can attend.\n"
-            "Choose CMI All only if you cannot make it for anything."
+    )
+
+
+async def send_scheduled_sunday_poll(
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Send the weekly Sunday poll automatically."""
+
+    if SUNDAY_CHAT_ID is None:
+        logger.warning(
+            "Sunday poll skipped because "
+            "SUNDAY_CHAT_ID is not configured."
+        )
+        return
+
+    await post_sunday_poll(
+        bot=context.bot,
+        chat_id=SUNDAY_CHAT_ID,
+    )
+
+
+def register_sunday_handlers(
+    application: Application,
+) -> None:
+    """Register Sunday commands and the optional schedule."""
+
+    application.add_handler(
+        CommandHandler(
+            "sendsunday",
+            send_sunday_command,
+        )
+    )
+
+    # Keep the earlier test command working.
+    application.add_handler(
+        CommandHandler(
+            "testsunday",
+            send_sunday_command,
+        )
+    )
+
+    if not SUNDAY_SCHEDULER_ENABLED:
+        logger.info(
+            "Automatic Sunday attendance polls are disabled."
+        )
+        return
+
+    if SUNDAY_CHAT_ID is None:
+        logger.warning(
+            "Sunday scheduler was not started because "
+            "SUNDAY_CHAT_ID is missing."
+        )
+        return
+
+    if application.job_queue is None:
+        raise RuntimeError(
+            "Telegram JobQueue is unavailable. "
+            'Install "python-telegram-bot[job-queue]".'
+        )
+
+    application.job_queue.run_daily(
+        callback=send_scheduled_sunday_poll,
+        time=time(
+            hour=20,
+            minute=0,
+            tzinfo=SINGAPORE_TIMEZONE,
         ),
+        days=(4,),
+        name="weekly-sunday-attendance-poll",
     )
 
-    await context.bot.send_poll(
-        chat_id=chat.id,
-        question="Attendance for this Sunday",
-        options=[
-            "Morning Service",
-            "Lunch",
-            "Youth Service",
-            "Hangout Afterwards",
-            "CMI All",
-        ],
-        is_anonymous=False,
-        allows_multiple_answers=True,
+    logger.info(
+        "Sunday attendance poll scheduled for "
+        "Thursday at 8:00 PM Singapore time."
     )
-
-
-def register_sunday_handlers(application: Application) -> None:
-    """Register Sunday attendance commands."""
-    application.add_handler(CommandHandler("testsunday", test_sunday))
