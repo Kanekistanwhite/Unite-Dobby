@@ -37,7 +37,7 @@ SessionLocal = sessionmaker(
 def init_database() -> None:
     """Create all database tables that do not already exist."""
 
-    # Importing the model registers it with Base before tables are created.
+    import models.biweekly_event  # noqa: F401
     import models.member  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
