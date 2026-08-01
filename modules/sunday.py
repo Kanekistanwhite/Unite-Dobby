@@ -73,7 +73,7 @@ async def send_sunday_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Post a real Sunday poll into the current test chat."""
+    """Post a Sunday poll into the same chat as the command."""
 
     if update.message is None:
         return
@@ -97,20 +97,63 @@ async def send_sunday_command(
 
 async def send_scheduled_sunday_poll(
     context: ContextTypes.DEFAULT_TYPE,
-) -> None:
-    """Send the weekly Sunday poll automatically."""
+) -> bool:
+    """Send the Sunday poll to the configured Sunday chat."""
 
     if SUNDAY_CHAT_ID is None:
         logger.warning(
             "Sunday poll skipped because "
             "SUNDAY_CHAT_ID is not configured."
         )
-        return
+        return False
 
     await post_sunday_poll(
         bot=context.bot,
         chat_id=SUNDAY_CHAT_ID,
     )
+
+    return True
+
+
+async def run_sunday_check_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Test the configured Sunday poll destination immediately."""
+
+    if update.message is None:
+        return
+
+    if not leader_is_approved(update):
+        await update.message.reply_text(
+            "⛔ This command is only available to approved leaders."
+        )
+        return
+
+    if SUNDAY_CHAT_ID is None:
+        await update.message.reply_text(
+            "❌ SUNDAY_CHAT_ID is not configured.\n\n"
+            "Add the private test-group chat ID "
+            "to Railway Variables."
+        )
+        return
+
+    await update.message.reply_text(
+        "🔍 Testing the configured Sunday poll destination..."
+    )
+
+    sent = await send_scheduled_sunday_poll(
+        context
+    )
+
+    if sent:
+        await update.message.reply_text(
+            "✅ Sunday poll sent to the configured test chat."
+        )
+    else:
+        await update.message.reply_text(
+            "❌ The Sunday poll could not be sent."
+        )
 
 
 def register_sunday_handlers(
@@ -125,11 +168,17 @@ def register_sunday_handlers(
         )
     )
 
-    # Keep the earlier test command working.
     application.add_handler(
         CommandHandler(
             "testsunday",
             send_sunday_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "runsundaycheck",
+            run_sunday_check_command,
         )
     )
 
