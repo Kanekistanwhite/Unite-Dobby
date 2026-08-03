@@ -12,6 +12,7 @@ from telegram.ext import (
 from config.settings import (
     BIWEEKLY_CHAT_ID,
     BIWEEKLY_SCHEDULER_ENABLED,
+    BIWEEKLY_TOPIC_ID,
 )
 from services.biweekly_service import (
     create_biweekly_event,
@@ -53,6 +54,7 @@ async def post_biweekly_poll(
     bot: Bot,
     chat_id: int,
     event_date_text: str,
+    message_thread_id: int | None = None,
 ) -> None:
     """Post the customised bi-weekly attendance poll."""
 
@@ -75,6 +77,7 @@ async def post_biweekly_poll(
 
     await bot.send_message(
         chat_id=chat_id,
+        message_thread_id=message_thread_id,
         text=(
             "🏠 UNITE BI-WEEKLY ATTENDANCE\n\n"
             f"📅 {full_date}\n\n"
@@ -87,6 +90,7 @@ async def post_biweekly_poll(
 
     await bot.send_poll(
         chat_id=chat_id,
+        message_thread_id=message_thread_id,
         question=(
             "Which part of the gathering can you attend?\n"
             f"{short_date}"
@@ -98,9 +102,10 @@ async def post_biweekly_poll(
     )
 
     logger.info(
-        "Bi-weekly poll for %s sent to chat %s.",
+        "Bi-weekly poll for %s sent to chat %s, topic %s.",
         event_date_text,
         chat_id,
+        message_thread_id,
     )
 
 
@@ -110,11 +115,13 @@ async def create_biweekly_command(
 ) -> None:
     """Create an event using /createbiweekly DD-MM-YYYY."""
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
     if not leader_is_approved(update):
-        await update.message.reply_text(
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
         return
@@ -124,7 +131,7 @@ async def create_biweekly_command(
     ).strip()
 
     if not event_date_text:
-        await update.message.reply_text(
+        await message.reply_text(
             "Usage:\n"
             "/createbiweekly DD-MM-YYYY\n\n"
             "Example:\n"
@@ -138,12 +145,12 @@ async def create_biweekly_command(
         )
 
     except ValueError as error:
-        await update.message.reply_text(
+        await message.reply_text(
             f"❌ {error}"
         )
         return
 
-    await update.message.reply_text(
+    await message.reply_text(
         "✅ Bi-weekly event created\n\n"
         f"Meetup date: {format_full_date(event.event_date)}\n"
         f"Poll date: {format_full_date(event.poll_date)}\n\n"
@@ -157,11 +164,13 @@ async def list_biweekly_command(
 ) -> None:
     """List all upcoming active bi-weekly events."""
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
     if not leader_is_approved(update):
-        await update.message.reply_text(
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
         return
@@ -169,7 +178,7 @@ async def list_biweekly_command(
     events = get_upcoming_biweekly_events()
 
     if not events:
-        await update.message.reply_text(
+        await message.reply_text(
             "There are no upcoming bi-weekly events."
         )
         return
@@ -192,7 +201,7 @@ async def list_biweekly_command(
             f"   Poll status: {poll_status}"
         )
 
-    await update.message.reply_text(
+    await message.reply_text(
         "🏠 Upcoming UNITE Bi-weekly Events\n\n"
         + "\n\n".join(event_sections)
     )
@@ -202,20 +211,18 @@ async def send_biweekly_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Send a bi-weekly poll into the current chat."""
+    """Send a bi-weekly poll into the current chat or topic."""
 
-    if update.message is None:
+    message = update.effective_message
+    chat = update.effective_chat
+
+    if message is None or chat is None:
         return
 
     if not leader_is_approved(update):
-        await update.message.reply_text(
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
-        return
-
-    chat = update.effective_chat
-
-    if chat is None:
         return
 
     event_date_text = " ".join(
@@ -223,7 +230,7 @@ async def send_biweekly_command(
     ).strip()
 
     if not event_date_text:
-        await update.message.reply_text(
+        await message.reply_text(
             "Usage:\n"
             "/sendbiweekly DD-MM-YYYY\n\n"
             "Example:\n"
@@ -236,10 +243,11 @@ async def send_biweekly_command(
             bot=context.bot,
             chat_id=chat.id,
             event_date_text=event_date_text,
+            message_thread_id=message.message_thread_id,
         )
 
     except ValueError as error:
-        await update.message.reply_text(
+        await message.reply_text(
             f"❌ {error}"
         )
 
@@ -247,12 +255,19 @@ async def send_biweekly_command(
 async def send_scheduled_biweekly_polls(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> int:
-    """Send all pending bi-weekly polls to the configured chat."""
+    """Send pending polls to the configured group topic."""
 
     if BIWEEKLY_CHAT_ID is None:
         logger.warning(
             "Bi-weekly poll check skipped because "
             "BIWEEKLY_CHAT_ID is not configured."
+        )
+        return 0
+
+    if BIWEEKLY_TOPIC_ID is None:
+        logger.warning(
+            "Bi-weekly poll check skipped because "
+            "BIWEEKLY_TOPIC_ID is not configured."
         )
         return 0
 
@@ -275,6 +290,7 @@ async def send_scheduled_biweekly_polls(
             bot=context.bot,
             chat_id=BIWEEKLY_CHAT_ID,
             event_date_text=event_date_text,
+            message_thread_id=BIWEEKLY_TOPIC_ID,
         )
 
         mark_biweekly_poll_sent(
@@ -297,24 +313,30 @@ async def run_biweekly_check_command(
 ) -> None:
     """Run the automatic bi-weekly poll check manually."""
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
     if not leader_is_approved(update):
-        await update.message.reply_text(
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
         return
 
     if BIWEEKLY_CHAT_ID is None:
-        await update.message.reply_text(
-            "❌ BIWEEKLY_CHAT_ID is not configured.\n\n"
-            "Add the private test-group chat ID "
-            "to Railway Variables."
+        await message.reply_text(
+            "❌ BIWEEKLY_CHAT_ID is not configured."
         )
         return
 
-    await update.message.reply_text(
+    if BIWEEKLY_TOPIC_ID is None:
+        await message.reply_text(
+            "❌ BIWEEKLY_TOPIC_ID is not configured."
+        )
+        return
+
+    await message.reply_text(
         "🔍 Running the automatic bi-weekly poll check..."
     )
 
@@ -323,13 +345,13 @@ async def run_biweekly_check_command(
     )
 
     if sent_count == 0:
-        await update.message.reply_text(
+        await message.reply_text(
             "✅ Check completed.\n\n"
             "No pending bi-weekly polls were found."
         )
         return
 
-    await update.message.reply_text(
+    await message.reply_text(
         "✅ Check completed.\n\n"
         f"Bi-weekly polls sent: {sent_count}"
     )
@@ -388,6 +410,13 @@ def register_biweekly_handlers(
         )
         return
 
+    if BIWEEKLY_TOPIC_ID is None:
+        logger.warning(
+            "Bi-weekly scheduler was not started because "
+            "BIWEEKLY_TOPIC_ID is missing."
+        )
+        return
+
     if application.job_queue is None:
         raise RuntimeError(
             "Telegram JobQueue is unavailable. "
@@ -406,5 +435,6 @@ def register_biweekly_handlers(
 
     logger.info(
         "Bi-weekly poll check scheduled for "
-        "8:00 PM Singapore time."
+        "8:00 PM Singapore time, topic %s.",
+        BIWEEKLY_TOPIC_ID,
     )

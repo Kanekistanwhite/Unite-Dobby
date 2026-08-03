@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time
+from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
 from telegram import Bot, Update
@@ -14,6 +14,7 @@ from config.settings import (
     BIRTHDAY_PLANNING_CHAT_ID,
     BIRTHDAY_PLANNING_SCHEDULER_ENABLED,
     BIRTHDAY_SCHEDULER_ENABLED,
+    BIRTHDAY_TOPIC_ID,
 )
 from services.birthday_planning_service import (
     BirthdayPlanningMember,
@@ -49,7 +50,7 @@ def build_birthday_message(
 
 def build_birthday_planning_message(
     member: BirthdayPlanningMember,
-    birthday_date,
+    birthday_date: date,
     reminder_type: str,
 ) -> str:
     """Build a private birthday-planning reminder."""
@@ -109,20 +110,23 @@ async def post_birthday_greeting(
     bot: Bot,
     chat_id: int,
     display_name: str,
+    message_thread_id: int | None = None,
 ) -> None:
     """Send one public birthday greeting."""
 
     await bot.send_message(
         chat_id=chat_id,
+        message_thread_id=message_thread_id,
         text=build_birthday_message(
             display_name=display_name,
         ),
     )
 
     logger.info(
-        "Birthday greeting sent for %s to chat %s.",
+        "Birthday greeting sent for %s to chat %s, topic %s.",
         display_name,
         chat_id,
+        message_thread_id,
     )
 
 
@@ -130,7 +134,7 @@ async def post_birthday_planning_reminder(
     bot: Bot,
     chat_id: int,
     member: BirthdayPlanningMember,
-    birthday_date,
+    birthday_date: date,
     reminder_type: str,
 ) -> None:
     """Send one reminder to the private planning group."""
@@ -187,6 +191,7 @@ async def send_daily_birthday_greetings(
             bot=context.bot,
             chat_id=BIRTHDAY_CHAT_ID,
             display_name=display_name,
+            message_thread_id=BIRTHDAY_TOPIC_ID,
         )
 
     return len(birthdays)
@@ -235,11 +240,13 @@ async def test_birthday_command(
 ) -> None:
     """Show a birthday-message preview."""
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
     if not leader_is_approved(update):
-        await update.message.reply_text(
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
         return
@@ -249,7 +256,7 @@ async def test_birthday_command(
     ).strip()
 
     if not member_name:
-        await update.message.reply_text(
+        await message.reply_text(
             "Usage:\n"
             "/testbirthday Member Name\n\n"
             "Example:\n"
@@ -262,14 +269,14 @@ async def test_birthday_command(
     )
 
     if member is None:
-        await update.message.reply_text(
+        await message.reply_text(
             f"❌ Member '{member_name}' was not found."
         )
         return
 
     display_name, _telegram_username = member
 
-    await update.message.reply_text(
+    await message.reply_text(
         "🧪 Birthday greeting preview\n\n"
         + build_birthday_message(
             display_name=display_name,
@@ -281,20 +288,18 @@ async def send_birthday_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Send a birthday greeting into the current chat."""
+    """Send a birthday greeting into the current chat or topic."""
 
-    if update.message is None:
+    message = update.effective_message
+    chat = update.effective_chat
+
+    if message is None or chat is None:
         return
 
     if not leader_is_approved(update):
-        await update.message.reply_text(
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
-        return
-
-    chat = update.effective_chat
-
-    if chat is None:
         return
 
     member_name = " ".join(
@@ -302,7 +307,7 @@ async def send_birthday_command(
     ).strip()
 
     if not member_name:
-        await update.message.reply_text(
+        await message.reply_text(
             "Usage:\n"
             "/sendbirthday Member Name\n\n"
             "Example:\n"
@@ -315,7 +320,7 @@ async def send_birthday_command(
     )
 
     if member is None:
-        await update.message.reply_text(
+        await message.reply_text(
             f"❌ Member '{member_name}' was not found."
         )
         return
@@ -326,6 +331,7 @@ async def send_birthday_command(
         bot=context.bot,
         chat_id=chat.id,
         display_name=display_name,
+        message_thread_id=message.message_thread_id,
     )
 
 
@@ -335,17 +341,19 @@ async def run_birthday_check_command(
 ) -> None:
     """Test the configured public birthday destination."""
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
     if not leader_is_approved(update):
-        await update.message.reply_text(
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
         return
 
     if BIRTHDAY_CHAT_ID is None:
-        await update.message.reply_text(
+        await message.reply_text(
             "❌ BIRTHDAY_CHAT_ID is not configured."
         )
         return
@@ -360,29 +368,37 @@ async def run_birthday_check_command(
         )
 
         if member is None:
-            await update.message.reply_text(
+            await message.reply_text(
                 f"❌ Member '{member_name}' was not found."
             )
             return
 
         display_name, _telegram_username = member
 
-        await update.message.reply_text(
-            "🔍 Testing the configured birthday destination..."
+        destination_description = (
+            f"topic {BIRTHDAY_TOPIC_ID}"
+            if BIRTHDAY_TOPIC_ID is not None
+            else "the main group chat"
+        )
+
+        await message.reply_text(
+            "🔍 Testing the configured birthday destination...\n\n"
+            f"Destination: {destination_description}"
         )
 
         await post_birthday_greeting(
             bot=context.bot,
             chat_id=BIRTHDAY_CHAT_ID,
             display_name=display_name,
+            message_thread_id=BIRTHDAY_TOPIC_ID,
         )
 
-        await update.message.reply_text(
-            "✅ Birthday greeting sent to the configured test chat."
+        await message.reply_text(
+            "✅ Birthday greeting sent to the configured destination."
         )
         return
 
-    await update.message.reply_text(
+    await message.reply_text(
         "🔍 Running today’s automatic birthday check..."
     )
 
@@ -391,11 +407,11 @@ async def run_birthday_check_command(
     )
 
     if greetings_sent == 0:
-        await update.message.reply_text(
+        await message.reply_text(
             "ℹ️ There are no birthdays today."
         )
     else:
-        await update.message.reply_text(
+        await message.reply_text(
             f"✅ Sent {greetings_sent} birthday greeting(s)."
         )
 
@@ -406,17 +422,19 @@ async def run_birthday_planning_command(
 ) -> None:
     """Send a selected reminder to the planning test group."""
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
     if not leader_is_approved(update):
-        await update.message.reply_text(
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
         return
 
     if BIRTHDAY_PLANNING_CHAT_ID is None:
-        await update.message.reply_text(
+        await message.reply_text(
             "❌ BIRTHDAY_PLANNING_CHAT_ID is not configured.\n\n"
             "Add the private planning-group chat ID "
             "to Railway Variables."
@@ -424,7 +442,7 @@ async def run_birthday_planning_command(
         return
 
     if len(context.args) < 2:
-        await update.message.reply_text(
+        await message.reply_text(
             "Usage:\n"
             "/runbirthdayplanning Member Name month\n"
             "/runbirthdayplanning Member Name fortnight\n\n"
@@ -450,7 +468,7 @@ async def run_birthday_planning_command(
     )
 
     if reminder_type is None:
-        await update.message.reply_text(
+        await message.reply_text(
             "❌ The reminder type must be "
             "'month' or 'fortnight'."
         )
@@ -465,7 +483,7 @@ async def run_birthday_planning_command(
     )
 
     if member is None:
-        await update.message.reply_text(
+        await message.reply_text(
             f"❌ Member '{member_name}' or their planner "
             "was not found."
         )
@@ -481,7 +499,7 @@ async def run_birthday_planning_command(
         reference_date=today,
     )
 
-    await update.message.reply_text(
+    await message.reply_text(
         "🔍 Sending the birthday-planning reminder "
         "to the configured private group..."
     )
@@ -494,7 +512,7 @@ async def run_birthday_planning_command(
         reminder_type=reminder_type,
     )
 
-    await update.message.reply_text(
+    await message.reply_text(
         "✅ Birthday-planning reminder sent."
     )
 
@@ -505,22 +523,24 @@ async def run_birthday_planning_check_command(
 ) -> None:
     """Run today's planning-reminder check manually."""
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
     if not leader_is_approved(update):
-        await update.message.reply_text(
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
         return
 
     if BIRTHDAY_PLANNING_CHAT_ID is None:
-        await update.message.reply_text(
+        await message.reply_text(
             "❌ BIRTHDAY_PLANNING_CHAT_ID is not configured."
         )
         return
 
-    await update.message.reply_text(
+    await message.reply_text(
         "🔍 Checking for birthday-planning reminders due today..."
     )
 
@@ -531,11 +551,11 @@ async def run_birthday_planning_check_command(
     )
 
     if reminder_count == 0:
-        await update.message.reply_text(
+        await message.reply_text(
             "ℹ️ No birthday-planning reminders are due today."
         )
     else:
-        await update.message.reply_text(
+        await message.reply_text(
             f"✅ Sent {reminder_count} planning reminder(s)."
         )
 
@@ -595,11 +615,13 @@ def register_birthday_handlers(
         logger.info(
             "Automatic birthday greetings are disabled."
         )
+
     elif BIRTHDAY_CHAT_ID is None:
         logger.warning(
             "Birthday scheduler was not started because "
             "BIRTHDAY_CHAT_ID is missing."
         )
+
     else:
         application.job_queue.run_daily(
             callback=send_daily_birthday_greetings,
@@ -613,18 +635,21 @@ def register_birthday_handlers(
 
         logger.info(
             "Automatic birthday greetings are scheduled for "
-            "12:00 AM Singapore time."
+            "12:00 AM Singapore time, topic %s.",
+            BIRTHDAY_TOPIC_ID,
         )
 
     if not BIRTHDAY_PLANNING_SCHEDULER_ENABLED:
         logger.info(
             "Automatic birthday-planning reminders are disabled."
         )
+
     elif BIRTHDAY_PLANNING_CHAT_ID is None:
         logger.warning(
             "Birthday-planning scheduler was not started because "
             "BIRTHDAY_PLANNING_CHAT_ID is missing."
         )
+
     else:
         application.job_queue.run_daily(
             callback=send_daily_birthday_planning_reminders,

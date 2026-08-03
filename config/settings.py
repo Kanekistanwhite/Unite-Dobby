@@ -66,7 +66,7 @@ def read_optional_int(
         return int(value)
     except ValueError as error:
         raise RuntimeError(
-            f"{variable_name} must be a valid Telegram chat ID."
+            f"{variable_name} must be a valid integer."
         ) from error
 
 
@@ -106,6 +106,12 @@ BIRTHDAY_CHAT_ID = read_optional_int(
     "BIRTHDAY_CHAT_ID"
 )
 
+# Leave blank when birthday greetings should be posted
+# in the main/General chat instead of a specific topic.
+BIRTHDAY_TOPIC_ID = read_optional_int(
+    "BIRTHDAY_TOPIC_ID"
+)
+
 BIRTHDAY_SCHEDULER_ENABLED = read_boolean(
     "BIRTHDAY_SCHEDULER_ENABLED",
     default=False,
@@ -128,6 +134,10 @@ SUNDAY_CHAT_ID = read_optional_int(
     "SUNDAY_CHAT_ID"
 )
 
+SUNDAY_TOPIC_ID = read_optional_int(
+    "SUNDAY_TOPIC_ID"
+)
+
 SUNDAY_SCHEDULER_ENABLED = read_boolean(
     "SUNDAY_SCHEDULER_ENABLED",
     default=False,
@@ -137,6 +147,10 @@ SUNDAY_SCHEDULER_ENABLED = read_boolean(
 # Bi-weekly attendance configuration.
 BIWEEKLY_CHAT_ID = read_optional_int(
     "BIWEEKLY_CHAT_ID"
+)
+
+BIWEEKLY_TOPIC_ID = read_optional_int(
+    "BIWEEKLY_TOPIC_ID"
 )
 
 BIWEEKLY_SCHEDULER_ENABLED = read_boolean(
