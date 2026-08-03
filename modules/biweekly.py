@@ -20,6 +20,10 @@ from services.biweekly_service import (
     get_upcoming_biweekly_events,
     mark_biweekly_poll_sent,
 )
+from services.date_service import (
+    format_full_date,
+    format_short_date,
+)
 from services.permissions import is_approved_leader
 
 
@@ -28,13 +32,15 @@ logger = logging.getLogger(__name__)
 SINGAPORE_TIMEZONE = ZoneInfo("Asia/Singapore")
 
 BIWEEKLY_POLL_OPTIONS = [
-    "Lunch",
-    "Dinner",
-    "CMI Both",
+    "🍽 Lunch",
+    "🌙 Dinner",
+    "❌ Cannot Make Both",
 ]
 
 
-def leader_is_approved(update: Update) -> bool:
+def leader_is_approved(
+    update: Update,
+) -> bool:
     """Check whether the command user is an approved leader."""
 
     user = update.effective_user
@@ -48,7 +54,7 @@ async def post_biweekly_poll(
     chat_id: int,
     event_date_text: str,
 ) -> None:
-    """Post a bi-weekly attendance poll."""
+    """Post the customised bi-weekly attendance poll."""
 
     event = get_biweekly_event_by_date(
         event_date_text
@@ -59,27 +65,36 @@ async def post_biweekly_poll(
             f"No bi-weekly event exists on {event_date_text}."
         )
 
-    formatted_date = event.event_date.strftime(
-        "%d %B %Y"
+    full_date = format_full_date(
+        event.event_date
+    )
+
+    short_date = format_short_date(
+        event.event_date
     )
 
     await bot.send_message(
         chat_id=chat_id,
         text=(
-            "🍽️ Bi-weekly Attendance\n\n"
-            f"Meetup date: {formatted_date}\n\n"
-            "Select every timing you can attend.\n"
-            "Choose CMI Both only if you cannot attend "
-            "either timing."
+            "🏠 UNITE BI-WEEKLY ATTENDANCE\n\n"
+            f"📅 {full_date}\n\n"
+            "Please indicate which part of the gathering "
+            "you can attend.\n\n"
+            "You may select both Lunch and Dinner "
+            "if you are attending both."
         ),
     )
 
     await bot.send_poll(
         chat_id=chat_id,
-        question=f"Attendance for {formatted_date}",
+        question=(
+            "Which part of the gathering can you attend?\n"
+            f"{short_date}"
+        ),
         options=BIWEEKLY_POLL_OPTIONS,
         is_anonymous=False,
         allows_multiple_answers=True,
+        allows_revoting=True,
     )
 
     logger.info(
@@ -130,12 +145,9 @@ async def create_biweekly_command(
 
     await update.message.reply_text(
         "✅ Bi-weekly event created\n\n"
-        f"Meetup date: "
-        f"{event.event_date.strftime('%d-%m-%Y')}\n"
-        f"Poll date: "
-        f"{event.poll_date.strftime('%d-%m-%Y')}\n\n"
-        "The poll will be scheduled 10 days "
-        "before the meetup."
+        f"Meetup date: {format_full_date(event.event_date)}\n"
+        f"Poll date: {format_full_date(event.poll_date)}\n\n"
+        "The poll is scheduled 10 days before the meetup."
     )
 
 
@@ -143,7 +155,7 @@ async def list_biweekly_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """List upcoming bi-weekly events."""
+    """List all upcoming active bi-weekly events."""
 
     if update.message is None:
         return
@@ -162,29 +174,27 @@ async def list_biweekly_command(
         )
         return
 
-    event_lines = []
+    event_sections: list[str] = []
 
-    for number, event in enumerate(
+    for index, event in enumerate(
         events,
         start=1,
     ):
         poll_status = (
-            "Sent"
+            "✅ Sent"
             if event.poll_sent
-            else "Not sent"
+            else "⏳ Pending"
         )
 
-        event_lines.append(
-            f"{number}. "
-            f"{event.event_date.strftime('%d-%m-%Y')}\n"
-            f"   Poll date: "
-            f"{event.poll_date.strftime('%d-%m-%Y')}\n"
+        event_sections.append(
+            f"{index}. {format_full_date(event.event_date)}\n"
+            f"   Poll date: {format_full_date(event.poll_date)}\n"
             f"   Poll status: {poll_status}"
         )
 
     await update.message.reply_text(
-        "📅 Upcoming Bi-weekly Events\n\n"
-        + "\n\n".join(event_lines)
+        "🏠 Upcoming UNITE Bi-weekly Events\n\n"
+        + "\n\n".join(event_sections)
     )
 
 
@@ -237,11 +247,11 @@ async def send_biweekly_command(
 async def send_scheduled_biweekly_polls(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> int:
-    """Check for due bi-weekly polls and send them once."""
+    """Send all pending bi-weekly polls to the configured chat."""
 
     if BIWEEKLY_CHAT_ID is None:
         logger.warning(
-            "Bi-weekly poll skipped because "
+            "Bi-weekly poll check skipped because "
             "BIWEEKLY_CHAT_ID is not configured."
         )
         return 0
@@ -250,47 +260,33 @@ async def send_scheduled_biweekly_polls(
         SINGAPORE_TIMEZONE
     ).date()
 
-    events = get_pending_biweekly_events(
-        current_date
+    pending_events = get_pending_biweekly_events(
+        current_date=current_date
     )
-
-    if not events:
-        logger.info(
-            "No pending bi-weekly polls for %s.",
-            current_date,
-        )
-        return 0
 
     sent_count = 0
 
-    for event in events:
+    for event in pending_events:
         event_date_text = event.event_date.strftime(
             "%d-%m-%Y"
         )
 
-        try:
-            await post_biweekly_poll(
-                bot=context.bot,
-                chat_id=BIWEEKLY_CHAT_ID,
-                event_date_text=event_date_text,
-            )
+        await post_biweekly_poll(
+            bot=context.bot,
+            chat_id=BIWEEKLY_CHAT_ID,
+            event_date_text=event_date_text,
+        )
 
-            mark_biweekly_poll_sent(
-                event.id
-            )
+        mark_biweekly_poll_sent(
+            event_id=event.id
+        )
 
-            sent_count += 1
+        sent_count += 1
 
-            logger.info(
-                "Automatic bi-weekly poll sent for %s.",
-                event_date_text,
-            )
-
-        except Exception:
-            logger.exception(
-                "Automatic bi-weekly poll failed for %s.",
-                event_date_text,
-            )
+    if sent_count == 0:
+        logger.info(
+            "No pending bi-weekly polls were found."
+        )
 
     return sent_count
 
@@ -299,7 +295,7 @@ async def run_biweekly_check_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Run the automatic bi-weekly check immediately."""
+    """Run the automatic bi-weekly poll check manually."""
 
     if update.message is None:
         return
@@ -313,7 +309,8 @@ async def run_biweekly_check_command(
     if BIWEEKLY_CHAT_ID is None:
         await update.message.reply_text(
             "❌ BIWEEKLY_CHAT_ID is not configured.\n\n"
-            "Add your private test-group chat ID to the .env file."
+            "Add the private test-group chat ID "
+            "to Railway Variables."
         )
         return
 

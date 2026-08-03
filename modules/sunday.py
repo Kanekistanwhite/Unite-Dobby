@@ -1,5 +1,5 @@
 import logging
-from datetime import time
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from telegram import Bot, Update
@@ -13,6 +13,11 @@ from config.settings import (
     SUNDAY_CHAT_ID,
     SUNDAY_SCHEDULER_ENABLED,
 )
+from services.date_service import (
+    format_full_date,
+    format_short_date,
+    get_upcoming_sunday,
+)
 from services.permissions import is_approved_leader
 
 
@@ -21,15 +26,17 @@ logger = logging.getLogger(__name__)
 SINGAPORE_TIMEZONE = ZoneInfo("Asia/Singapore")
 
 SUNDAY_POLL_OPTIONS = [
-    "Morning Service",
-    "Lunch",
-    "Youth Service",
-    "Hangout Afterwards",
-    "CMI All",
+    "⛪ Morning Service",
+    "🍽 Lunch",
+    "🔥 Youth Service",
+    "🤝 Hangout Afterwards",
+    "❌ CMI All",
 ]
 
 
-def leader_is_approved(update: Update) -> bool:
+def leader_is_approved(
+    update: Update,
+) -> bool:
     """Check whether the user is an approved leader."""
 
     user = update.effective_user
@@ -38,25 +45,51 @@ def leader_is_approved(update: Update) -> bool:
     return is_approved_leader(user_id)
 
 
+def get_next_sunday():
+    """Return the upcoming Sunday using Singapore's current date."""
+
+    today = datetime.now(
+        SINGAPORE_TIMEZONE
+    ).date()
+
+    return get_upcoming_sunday(
+        reference_date=today
+    )
+
+
 async def post_sunday_poll(
     bot: Bot,
     chat_id: int,
 ) -> None:
-    """Post the Sunday attendance message and native poll."""
+    """Post the customised Sunday attendance poll."""
+
+    sunday_date = get_next_sunday()
+
+    full_date = format_full_date(
+        sunday_date
+    )
+
+    short_date = format_short_date(
+        sunday_date
+    )
 
     await bot.send_message(
         chat_id=chat_id,
         text=(
-            "⛪ Sunday Attendance\n\n"
-            "Select everything you can attend.\n"
-            "Choose CMI All only if you cannot make it "
-            "for anything."
+            "⛪ SUNDAY ATTENDANCE\n\n"
+            f"📅 {full_date}\n\n"
+            "Another Sunday, another Poll\n"
+            "Please select everything that you will be "
+            "joining this Sunday."
         ),
     )
 
     await bot.send_poll(
         chat_id=chat_id,
-        question="Attendance for this Sunday",
+        question=(
+            "What will you be joining this Sunday?\n"
+            f"{short_date}"
+        ),
         options=SUNDAY_POLL_OPTIONS,
         is_anonymous=False,
         allows_multiple_answers=True,
@@ -64,7 +97,8 @@ async def post_sunday_poll(
     )
 
     logger.info(
-        "Sunday attendance poll sent to chat %s.",
+        "Sunday attendance poll for %s sent to chat %s.",
+        sunday_date,
         chat_id,
     )
 
@@ -119,7 +153,7 @@ async def run_sunday_check_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Test the configured Sunday poll destination immediately."""
+    """Test the configured Sunday poll destination."""
 
     if update.message is None:
         return
@@ -159,7 +193,7 @@ async def run_sunday_check_command(
 def register_sunday_handlers(
     application: Application,
 ) -> None:
-    """Register Sunday commands and the optional schedule."""
+    """Register Sunday commands and the optional scheduler."""
 
     application.add_handler(
         CommandHandler(

@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_FILE = BASE_DIR / ".env"
 
-# Load private settings from .env.
+# Load private settings from .env during local development.
+# Railway provides the same values as environment variables.
 load_dotenv(ENV_FILE)
 
 
@@ -21,7 +22,7 @@ def require_environment_variable(
 
     if not value:
         raise RuntimeError(
-            f"{variable_name} is missing from the .env file."
+            f"{variable_name} is missing from the environment."
         )
 
     return value
@@ -100,13 +101,24 @@ LEADER_USER_IDS = parse_user_ids(
 )
 
 
-# Birthday greeting configuration.
+# Public birthday greeting configuration.
 BIRTHDAY_CHAT_ID = read_optional_int(
     "BIRTHDAY_CHAT_ID"
 )
 
 BIRTHDAY_SCHEDULER_ENABLED = read_boolean(
     "BIRTHDAY_SCHEDULER_ENABLED",
+    default=False,
+)
+
+
+# Private birthday-planning reminder configuration.
+BIRTHDAY_PLANNING_CHAT_ID = read_optional_int(
+    "BIRTHDAY_PLANNING_CHAT_ID"
+)
+
+BIRTHDAY_PLANNING_SCHEDULER_ENABLED = read_boolean(
+    "BIRTHDAY_PLANNING_SCHEDULER_ENABLED",
     default=False,
 )
 
