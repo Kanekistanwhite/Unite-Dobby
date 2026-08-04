@@ -259,7 +259,7 @@ async def list_members_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """List active members and their birthday planners."""
+    """List active members in birthday order."""
 
     if not await check_leader_permission(update):
         return
@@ -276,6 +276,21 @@ async def list_members_command(
             "There are no members in the database yet."
         )
         return
+
+    # Sort members from January to December.
+    # Within each month, members are sorted by birthday day.
+    # Members without a birthday appear at the bottom.
+    members.sort(
+        key=lambda item: (
+            item[0].birthday_month
+            if item[0].birthday_month is not None
+            else 13,
+            item[0].birthday_day
+            if item[0].birthday_day is not None
+            else 32,
+            item[0].display_name.lower(),
+        )
+    )
 
     member_sections: list[str] = []
 
@@ -314,7 +329,7 @@ async def list_members_command(
         )
 
     await message.reply_text(
-        "👥 UNITE MEMBERS\n\n"
+        "👥 UNITE MEMBERS — BIRTHDAY ORDER\n\n"
         + "\n\n".join(member_sections)
     )
 
