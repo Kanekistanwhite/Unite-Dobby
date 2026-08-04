@@ -25,6 +25,7 @@ from modules.biweekly import (
     list_biweekly_command,
     run_biweekly_check_command,
 )
+from modules.members import list_members_command
 from modules.sunday import run_sunday_check_command
 from services.permissions import is_approved_leader
 
@@ -38,8 +39,8 @@ CallbackFunction = Callable[
 CONTROL_PANEL_TEXT = (
     "🧰 UNITE DOBBY CONTROL PANEL\n\n"
     "Choose what you would like Dobby to do.\n\n"
-    "Actions that send messages or polls will ask "
-    "for confirmation first."
+    "Actions that may send messages or polls "
+    "will ask for confirmation first."
 )
 
 
@@ -72,6 +73,10 @@ def build_main_menu() -> InlineKeyboardMarkup:
                 "📅 List Bi-weekly",
                 callback_data="panel:show:listbiweekly",
             ),
+            InlineKeyboardButton(
+                "👥 List Members",
+                callback_data="panel:show:listmembers",
+            ),
         ],
         [
             InlineKeyboardButton(
@@ -95,20 +100,22 @@ def build_main_menu() -> InlineKeyboardMarkup:
         ],
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
 
 def build_confirmation_menu(
     action_name: str,
 ) -> tuple[str, InlineKeyboardMarkup]:
-    """Build a confirmation screen for a sending action."""
+    """Build a confirmation screen for an action."""
 
     confirmation_details = {
         "sunday": (
             "⛪ Send Sunday attendance poll?",
             (
-                "This will post the Sunday message and poll "
-                "to the configured Telegram topic."
+                "This will immediately post the Sunday message "
+                "and poll to the configured Telegram topic."
             ),
         ),
         "biweekly": (
@@ -134,7 +141,9 @@ def build_confirmation_menu(
         ),
     }
 
-    title, description = confirmation_details[action_name]
+    title, description = confirmation_details[
+        action_name
+    ]
 
     text = (
         f"{title}\n\n"
@@ -155,7 +164,10 @@ def build_confirmation_menu(
         ]
     ]
 
-    return text, InlineKeyboardMarkup(keyboard)
+    return (
+        text,
+        InlineKeyboardMarkup(keyboard),
+    )
 
 
 def leader_is_approved(
@@ -166,7 +178,9 @@ def leader_is_approved(
     user = update.effective_user
     user_id = user.id if user else None
 
-    return is_approved_leader(user_id)
+    return is_approved_leader(
+        user_id
+    )
 
 
 async def show_control_panel(
@@ -210,7 +224,7 @@ async def handle_control_panel_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Handle every button inside the control panel."""
+    """Handle every control-panel button."""
 
     query = update.callback_query
 
@@ -240,19 +254,24 @@ async def handle_control_panel_callback(
             await query.message.delete()
         return
 
-    if callback_data.startswith("panel:confirm:"):
+    if callback_data.startswith(
+        "panel:confirm:"
+    ):
         action_name = callback_data.removeprefix(
             "panel:confirm:"
         )
 
-        if action_name not in {
+        valid_actions = {
             "sunday",
             "biweekly",
             "birthday",
             "planning",
-        }:
+        }
+
+        if action_name not in valid_actions:
             await query.edit_message_text(
-                "❌ Unknown control-panel action."
+                "❌ Unknown control-panel action.",
+                reply_markup=build_main_menu(),
             )
             return
 
@@ -266,17 +285,28 @@ async def handle_control_panel_callback(
         )
         return
 
-    sending_actions: dict[str, CallbackFunction] = {
-        "panel:run:sunday": run_sunday_check_command,
-        "panel:run:biweekly": run_biweekly_check_command,
-        "panel:run:birthday": run_birthday_check_command,
-        (
-            "panel:run:planning"
-        ): run_birthday_planning_check_command,
+    sending_actions: dict[
+        str,
+        CallbackFunction,
+    ] = {
+        "panel:run:sunday": (
+            run_sunday_check_command
+        ),
+        "panel:run:biweekly": (
+            run_biweekly_check_command
+        ),
+        "panel:run:birthday": (
+            run_birthday_check_command
+        ),
+        "panel:run:planning": (
+            run_birthday_planning_check_command
+        ),
     }
 
-    selected_sending_action = sending_actions.get(
-        callback_data
+    selected_sending_action = (
+        sending_actions.get(
+            callback_data
+        )
     )
 
     if selected_sending_action is not None:
@@ -296,15 +326,25 @@ async def handle_control_panel_callback(
         )
         return
 
-    information_actions: dict[str, CallbackFunction] = {
-        "panel:show:listbiweekly": list_biweekly_command,
+    information_actions: dict[
+        str,
+        CallbackFunction,
+    ] = {
+        "panel:show:listbiweekly": (
+            list_biweekly_command
+        ),
+        "panel:show:listmembers": (
+            list_members_command
+        ),
         "panel:show:chatid": chat_id,
         "panel:show:topicid": topic_id,
         "panel:show:myid": my_id,
     }
 
-    selected_information_action = information_actions.get(
-        callback_data
+    selected_information_action = (
+        information_actions.get(
+            callback_data
+        )
     )
 
     if selected_information_action is not None:

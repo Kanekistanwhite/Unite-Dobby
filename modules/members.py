@@ -1,5 +1,12 @@
+import logging
+
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+)
+
 from services.birthday_service import seed_birthday_roster
 from services.member_service import (
     add_member,
@@ -9,20 +16,24 @@ from services.member_service import (
 from services.permissions import is_approved_leader
 
 
+logger = logging.getLogger(__name__)
+
+
 async def check_leader_permission(
     update: Update,
 ) -> bool:
     """Check whether the user may use member-management commands."""
 
-    if update.message is None:
-        return False
-
+    message = update.effective_message
     user = update.effective_user
 
-    if not is_approved_leader(
-        user.id if user else None
-    ):
-        await update.message.reply_text(
+    if message is None:
+        return False
+
+    user_id = user.id if user else None
+
+    if not is_approved_leader(user_id):
+        await message.reply_text(
             "⛔ This command is only available to approved leaders."
         )
         return False
@@ -39,10 +50,12 @@ async def add_member_command(
     if not await check_leader_permission(update):
         return
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
-    command_text = update.message.text or ""
+    command_text = message.text or ""
 
     try:
         details = command_text.split(
@@ -50,11 +63,13 @@ async def add_member_command(
             maxsplit=1,
         )[1]
     except IndexError:
-        await update.message.reply_text(
+        await message.reply_text(
             "Usage:\n"
             "/addmember Name | DD-MM\n\n"
             "For a leader:\n"
-            "/addmember Name | DD-MM | leader"
+            "/addmember Name | DD-MM | leader\n\n"
+            "Example:\n"
+            "/addmember Kelly | 09-01"
         )
         return
 
@@ -64,8 +79,10 @@ async def add_member_command(
     ]
 
     if len(parts) not in (2, 3):
-        await update.message.reply_text(
+        await message.reply_text(
             "Please use this format:\n"
+            "/addmember Name | DD-MM\n\n"
+            "For a leader:\n"
             "/addmember Name | DD-MM | leader"
         )
         return
@@ -78,35 +95,47 @@ async def add_member_command(
         and parts[2].lower() == "leader"
     )
 
+    if not display_name:
+        await message.reply_text(
+            "❌ The member name cannot be empty."
+        )
+        return
+
     try:
-        day_text, month_text = birthday_text.split("-")
+        day_text, month_text = birthday_text.split(
+            "-",
+            maxsplit=1,
+        )
+
+        birthday_day = int(day_text)
+        birthday_month = int(month_text)
 
         member = add_member(
             display_name=display_name,
-            birthday_day=int(day_text),
-            birthday_month=int(month_text),
+            birthday_day=birthday_day,
+            birthday_month=birthday_month,
             is_leader=is_leader,
         )
 
     except ValueError as error:
-        await update.message.reply_text(
+        await message.reply_text(
             f"❌ {error}"
         )
         return
 
-    leader_label = (
-        "\n👑 Leader"
+    leader_text = (
+        "Yes"
         if member.is_leader
-        else ""
+        else "No"
     )
 
-    await update.message.reply_text(
+    await message.reply_text(
         "✅ Member added\n\n"
         f"Name: {member.display_name}\n"
         f"Birthday: "
         f"{member.birthday_day:02d}-"
-        f"{member.birthday_month:02d}"
-        f"{leader_label}"
+        f"{member.birthday_month:02d}\n"
+        f"Leader: {leader_text}"
     )
 
 
@@ -114,15 +143,17 @@ async def set_planner_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Assign a birthday planner using /setplanner Member | Planner."""
+    """Assign a birthday planner to a member."""
 
     if not await check_leader_permission(update):
         return
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
-    command_text = update.message.text or ""
+    command_text = message.text or ""
 
     try:
         details = command_text.split(
@@ -130,11 +161,11 @@ async def set_planner_command(
             maxsplit=1,
         )[1]
     except IndexError:
-        await update.message.reply_text(
+        await message.reply_text(
             "Usage:\n"
-            "/setplanner Member | Planner\n\n"
+            "/setplanner Member Name | Planner Name\n\n"
             "Example:\n"
-            "/setplanner Charlotte | Gordon"
+            "/setplanner Kelly | Gordon"
         )
         return
 
@@ -144,24 +175,33 @@ async def set_planner_command(
     ]
 
     if len(parts) != 2:
-        await update.message.reply_text(
+        await message.reply_text(
             "Please use this format:\n"
-            "/setplanner Member | Planner"
+            "/setplanner Member Name | Planner Name"
+        )
+        return
+
+    member_name = parts[0]
+    planner_name = parts[1]
+
+    if not member_name or not planner_name:
+        await message.reply_text(
+            "❌ Both the member and planner names are required."
         )
         return
 
     try:
         member, planner = set_birthday_planner(
-            member_name=parts[0],
-            planner_name=parts[1],
+            member_name,
+            planner_name,
         )
     except ValueError as error:
-        await update.message.reply_text(
+        await message.reply_text(
             f"❌ {error}"
         )
         return
 
-    await update.message.reply_text(
+    await message.reply_text(
         "✅ Birthday planner assigned\n\n"
         f"Member: {member.display_name}\n"
         f"Planner: {planner.display_name}"
@@ -177,18 +217,20 @@ async def list_members_command(
     if not await check_leader_permission(update):
         return
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
 
     members = get_active_members_with_planners()
 
     if not members:
-        await update.message.reply_text(
+        await message.reply_text(
             "There are no members in the database yet."
         )
         return
 
-    member_lines = []
+    member_lines: list[str] = []
 
     for number, (member, planner_name) in enumerate(
         members,
@@ -219,39 +261,53 @@ async def list_members_command(
             f"   🎁 Planner: {planner}"
         )
 
-    await update.message.reply_text(
+    await message.reply_text(
         "👥 Unite Dobby Members\n\n"
         + "\n\n".join(member_lines)
     )
+
 
 async def setup_birthdays_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Import the complete life-group birthday roster."""
+    """Import or update the complete birthday roster."""
 
     if not await check_leader_permission(update):
         return
 
-    if update.message is None:
+    message = update.effective_message
+
+    if message is None:
         return
+
+    await message.reply_text(
+        "⏳ Updating the birthday roster..."
+    )
 
     try:
         created, updated, planners = seed_birthday_roster()
     except Exception:
-        await update.message.reply_text(
-            "❌ Dobby could not import the birthday roster.\n"
-            "Please check the terminal for the error."
+        logger.exception(
+            "The birthday roster could not be updated."
         )
-        raise
 
-    await update.message.reply_text(
-        "✅ Birthday roster imported\n\n"
+        await message.reply_text(
+            "❌ The birthday roster could not be updated.\n\n"
+            "Check the Railway logs for details."
+        )
+        return
+
+    await message.reply_text(
+        "✅ Birthday roster updated\n\n"
         f"New members added: {created}\n"
         f"Existing members updated: {updated}\n"
         f"Planner assignments updated: {planners}\n\n"
-        "Use /listmembers to check the roster."
+        "Use /listmembers or the control-panel button "
+        "to check the roster."
     )
+
+
 def register_member_handlers(
     application: Application,
 ) -> None:
