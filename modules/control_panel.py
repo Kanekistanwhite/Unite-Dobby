@@ -1,5 +1,3 @@
-from collections.abc import Awaitable, Callable
-
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -30,27 +28,19 @@ from modules.sunday import run_sunday_check_command
 from services.permissions import is_approved_leader
 
 
-CallbackFunction = Callable[
-    [Update, ContextTypes.DEFAULT_TYPE],
-    Awaitable[None],
-]
-
-
 CONTROL_PANEL_TEXT = (
-    "🧰 UNITE DOBBY CONTROL PANEL\n\n"
-    "Choose what you would like Dobby to do.\n\n"
-    "Actions that may send messages or polls "
-    "will ask for confirmation first."
+    "🧰 UNITE DOBBY — LEADER CONTROL PANEL\n\n"
+    "Choose what you would like Dobby to do:"
 )
 
 
 def build_main_menu() -> InlineKeyboardMarkup:
-    """Build the main leader control panel."""
+    """Create the main leader control-panel buttons."""
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "⛪ Sunday Poll",
+                "⛪ Send Sunday Poll",
                 callback_data="panel:confirm:sunday",
             ),
             InlineKeyboardButton(
@@ -71,11 +61,11 @@ def build_main_menu() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 "📅 List Bi-weekly",
-                callback_data="panel:show:listbiweekly",
+                callback_data="panel:show:biweekly",
             ),
             InlineKeyboardButton(
                 "👥 List Members",
-                callback_data="panel:show:listmembers",
+                callback_data="panel:show:members",
             ),
         ],
         [
@@ -100,56 +90,13 @@ def build_main_menu() -> InlineKeyboardMarkup:
         ],
     ]
 
-    return InlineKeyboardMarkup(
-        keyboard
-    )
+    return InlineKeyboardMarkup(keyboard)
 
 
 def build_confirmation_menu(
     action_name: str,
-) -> tuple[str, InlineKeyboardMarkup]:
-    """Build a confirmation screen for an action."""
-
-    confirmation_details = {
-        "sunday": (
-            "⛪ Send Sunday attendance poll?",
-            (
-                "This will immediately post the Sunday message "
-                "and poll to the configured Telegram topic."
-            ),
-        ),
-        "biweekly": (
-            "🏠 Run bi-weekly poll check?",
-            (
-                "This sends every pending bi-weekly poll "
-                "that is currently due."
-            ),
-        ),
-        "birthday": (
-            "🎂 Run today’s birthday check?",
-            (
-                "This may send a birthday greeting to the "
-                "main UNITE group when a birthday is due today."
-            ),
-        ),
-        "planning": (
-            "🎁 Run today’s planning check?",
-            (
-                "This may send due birthday-planning reminders "
-                "to the private planning group."
-            ),
-        ),
-    }
-
-    title, description = confirmation_details[
-        action_name
-    ]
-
-    text = (
-        f"{title}\n\n"
-        f"{description}\n\n"
-        "Continue?"
-    )
+) -> InlineKeyboardMarkup:
+    """Create confirmation buttons for an action."""
 
     keyboard = [
         [
@@ -164,39 +111,62 @@ def build_confirmation_menu(
         ]
     ]
 
-    return (
-        text,
-        InlineKeyboardMarkup(keyboard),
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_confirmation_text(
+    action_name: str,
+) -> str:
+    """Return the confirmation message for an action."""
+
+    confirmation_messages = {
+        "sunday": (
+            "⛪ SEND SUNDAY POLL\n\n"
+            "Are you sure you want Dobby to run the Sunday "
+            "attendance check now?\n\n"
+            "A poll may be sent to the UNITE group."
+        ),
+        "biweekly": (
+            "🏠 RUN BI-WEEKLY CHECK\n\n"
+            "Are you sure you want Dobby to check for pending "
+            "bi-weekly attendance polls now?"
+        ),
+        "birthday": (
+            "🎂 RUN BIRTHDAY CHECK\n\n"
+            "Are you sure you want Dobby to check for today's "
+            "birthdays now?\n\n"
+            "A birthday greeting may be sent to the UNITE group."
+        ),
+        "planning": (
+            "🎁 RUN PLANNING CHECK\n\n"
+            "Are you sure you want Dobby to check for pending "
+            "birthday-planning reminders now?"
+        ),
+    }
+
+    return confirmation_messages.get(
+        action_name,
+        "Are you sure you want to run this action?",
     )
 
 
-def leader_is_approved(
-    update: Update,
-) -> bool:
-    """Check whether the person is an approved leader."""
-
-    user = update.effective_user
-    user_id = user.id if user else None
-
-    return is_approved_leader(
-        user_id
-    )
-
-
-async def show_control_panel(
+async def menu_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Open the leader control panel using /menu."""
+    """Open the leader control panel."""
 
     message = update.effective_message
+    user = update.effective_user
 
     if message is None:
         return
 
-    if not leader_is_approved(update):
+    user_id = user.id if user else None
+
+    if not is_approved_leader(user_id):
         await message.reply_text(
-            "⛔ The Dobby control panel is only available "
+            "⛔ This control panel is only available "
             "to approved leaders."
         )
         return
@@ -207,16 +177,90 @@ async def show_control_panel(
     )
 
 
-async def run_existing_action(
+async def run_confirmed_action(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    action_function: CallbackFunction,
+    action_name: str,
 ) -> None:
-    """Run an existing Dobby command from a button."""
+    """Run a confirmed control-panel action."""
 
-    await action_function(
+    query = update.callback_query
+
+    if query is None:
+        return
+
+    action_handlers = {
+        "sunday": run_sunday_check_command,
+        "biweekly": run_biweekly_check_command,
+        "birthday": run_birthday_check_command,
+        "planning": run_birthday_planning_check_command,
+    }
+
+    action_handler = action_handlers.get(
+        action_name
+    )
+
+    if action_handler is None:
+        await query.edit_message_text(
+            "❌ That action could not be found.",
+            reply_markup=build_main_menu(),
+        )
+        return
+
+    await query.edit_message_text(
+        "⏳ Dobby is running the requested action..."
+    )
+
+    await action_handler(
         update,
         context,
+    )
+
+    await query.edit_message_text(
+        CONTROL_PANEL_TEXT,
+        reply_markup=build_main_menu(),
+    )
+
+
+async def run_display_action(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    action_name: str,
+) -> None:
+    """Run an information-display action."""
+
+    query = update.callback_query
+
+    if query is None:
+        return
+
+    action_handlers = {
+        "biweekly": list_biweekly_command,
+        "members": list_members_command,
+        "chatid": chat_id,
+        "topicid": topic_id,
+        "myid": my_id,
+    }
+
+    action_handler = action_handlers.get(
+        action_name
+    )
+
+    if action_handler is None:
+        await query.edit_message_text(
+            "❌ That option could not be found.",
+            reply_markup=build_main_menu(),
+        )
+        return
+
+    await action_handler(
+        update,
+        context,
+    )
+
+    await query.edit_message_text(
+        CONTROL_PANEL_TEXT,
+        reply_markup=build_main_menu(),
     )
 
 
@@ -224,21 +268,24 @@ async def handle_control_panel_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Handle every control-panel button."""
+    """Handle all control-panel button presses."""
 
     query = update.callback_query
+    user = update.effective_user
 
     if query is None:
         return
 
-    if not leader_is_approved(update):
-        await query.answer(
-            "This control panel is only for approved leaders.",
-            show_alert=True,
+    await query.answer()
+
+    user_id = user.id if user else None
+
+    if not is_approved_leader(user_id):
+        await query.edit_message_text(
+            "⛔ This control panel is only available "
+            "to approved leaders."
         )
         return
-
-    await query.answer()
 
     callback_data = query.data or ""
 
@@ -250,113 +297,61 @@ async def handle_control_panel_callback(
         return
 
     if callback_data == "panel:close":
-        if query.message is not None:
-            await query.message.delete()
+        await query.edit_message_text(
+            "✅ UNITE Dobby's control panel has been closed.\n\n"
+            "Send /menu to open it again."
+        )
         return
 
     if callback_data.startswith(
         "panel:confirm:"
     ):
-        action_name = callback_data.removeprefix(
-            "panel:confirm:"
-        )
-
-        valid_actions = {
-            "sunday",
-            "biweekly",
-            "birthday",
-            "planning",
-        }
-
-        if action_name not in valid_actions:
-            await query.edit_message_text(
-                "❌ Unknown control-panel action.",
-                reply_markup=build_main_menu(),
-            )
-            return
-
-        text, keyboard = build_confirmation_menu(
-            action_name
-        )
+        action_name = callback_data.split(
+            ":",
+            maxsplit=2,
+        )[2]
 
         await query.edit_message_text(
-            text,
-            reply_markup=keyboard,
+            get_confirmation_text(action_name),
+            reply_markup=build_confirmation_menu(
+                action_name
+            ),
         )
         return
 
-    sending_actions: dict[
-        str,
-        CallbackFunction,
-    ] = {
-        "panel:run:sunday": (
-            run_sunday_check_command
-        ),
-        "panel:run:biweekly": (
-            run_biweekly_check_command
-        ),
-        "panel:run:birthday": (
-            run_birthday_check_command
-        ),
-        "panel:run:planning": (
-            run_birthday_planning_check_command
-        ),
-    }
+    if callback_data.startswith(
+        "panel:run:"
+    ):
+        action_name = callback_data.split(
+            ":",
+            maxsplit=2,
+        )[2]
 
-    selected_sending_action = (
-        sending_actions.get(
-            callback_data
-        )
-    )
-
-    if selected_sending_action is not None:
-        await query.edit_message_text(
-            "⏳ Running Dobby action..."
-        )
-
-        await run_existing_action(
-            update=update,
-            context=context,
-            action_function=selected_sending_action,
-        )
-
-        await query.edit_message_text(
-            CONTROL_PANEL_TEXT,
-            reply_markup=build_main_menu(),
+        await run_confirmed_action(
+            update,
+            context,
+            action_name,
         )
         return
 
-    information_actions: dict[
-        str,
-        CallbackFunction,
-    ] = {
-        "panel:show:listbiweekly": (
-            list_biweekly_command
-        ),
-        "panel:show:listmembers": (
-            list_members_command
-        ),
-        "panel:show:chatid": chat_id,
-        "panel:show:topicid": topic_id,
-        "panel:show:myid": my_id,
-    }
+    if callback_data.startswith(
+        "panel:show:"
+    ):
+        action_name = callback_data.split(
+            ":",
+            maxsplit=2,
+        )[2]
 
-    selected_information_action = (
-        information_actions.get(
-            callback_data
-        )
-    )
-
-    if selected_information_action is not None:
-        await run_existing_action(
-            update=update,
-            context=context,
-            action_function=selected_information_action,
+        await run_display_action(
+            update,
+            context,
+            action_name,
         )
         return
 
     await query.edit_message_text(
-        "❌ Unknown control-panel action.",
+        "❌ That control-panel option is no longer available.\n\n"
+        "Please reopen the menu.",
         reply_markup=build_main_menu(),
     )
 
@@ -364,12 +359,12 @@ async def handle_control_panel_callback(
 def register_control_panel_handlers(
     application: Application,
 ) -> None:
-    """Register the leader control panel."""
+    """Register the leader control-panel handlers."""
 
     application.add_handler(
         CommandHandler(
             "menu",
-            show_control_panel,
+            menu_command,
         )
     )
 
