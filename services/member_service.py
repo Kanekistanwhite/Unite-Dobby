@@ -73,17 +73,17 @@ def get_active_members_with_planners(
 ) -> list[tuple[Member, str | None]]:
     """Return active members together with their planner names."""
 
-    Planner = aliased(Member)
+    planner = aliased(Member)
 
     with SessionLocal() as session:
         rows = session.execute(
             select(
                 Member,
-                Planner.display_name,
+                planner.display_name,
             )
             .outerjoin(
-                Planner,
-                Member.birthday_planner_id == Planner.id,
+                planner,
+                Member.birthday_planner_id == planner.id,
             )
             .where(Member.is_active.is_(True))
             .order_by(Member.display_name)
@@ -151,3 +151,68 @@ def set_birthday_planner(
         session.refresh(planner)
 
         return member, planner
+
+
+def deactivate_member(
+    display_name: str,
+) -> Member:
+    """
+    Remove a member from active lists without deleting their record.
+
+    The member cannot be deactivated while they are assigned as
+    another active member's birthday planner.
+    """
+
+    cleaned_name = display_name.strip()
+
+    if not cleaned_name:
+        raise ValueError(
+            "The member name cannot be empty."
+        )
+
+    with SessionLocal() as session:
+        member = session.scalar(
+            select(Member).where(
+                func.lower(Member.display_name)
+                == cleaned_name.lower()
+            )
+        )
+
+        if member is None:
+            raise ValueError(
+                f"Member '{cleaned_name}' was not found."
+            )
+
+        if not member.is_active:
+            raise ValueError(
+                f"{member.display_name} is already inactive."
+            )
+
+        assigned_members = session.scalars(
+            select(Member)
+            .where(
+                Member.is_active.is_(True),
+                Member.birthday_planner_id == member.id,
+            )
+            .order_by(Member.display_name)
+        ).all()
+
+        if assigned_members:
+            assigned_names = ", ".join(
+                assigned_member.display_name
+                for assigned_member in assigned_members
+            )
+
+            raise ValueError(
+                f"{member.display_name} is currently the birthday "
+                f"planner for: {assigned_names}. Reassign them before "
+                "removing this member."
+            )
+
+        member.is_active = False
+        member.birthday_planner_id = None
+
+        session.commit()
+        session.refresh(member)
+
+        return member

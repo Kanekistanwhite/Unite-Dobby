@@ -10,6 +10,7 @@ from telegram.ext import (
 from services.birthday_service import seed_birthday_roster
 from services.member_service import (
     add_member,
+    deactivate_member,
     get_active_members_with_planners,
     set_birthday_planner,
 )
@@ -95,25 +96,16 @@ async def add_member_command(
         and parts[2].lower() == "leader"
     )
 
-    if not display_name:
-        await message.reply_text(
-            "❌ The member name cannot be empty."
-        )
-        return
-
     try:
         day_text, month_text = birthday_text.split(
             "-",
             maxsplit=1,
         )
 
-        birthday_day = int(day_text)
-        birthday_month = int(month_text)
-
         member = add_member(
             display_name=display_name,
-            birthday_day=birthday_day,
-            birthday_month=birthday_month,
+            birthday_day=int(day_text),
+            birthday_month=int(month_text),
             is_leader=is_leader,
         )
 
@@ -184,12 +176,6 @@ async def set_planner_command(
     member_name = parts[0]
     planner_name = parts[1]
 
-    if not member_name or not planner_name:
-        await message.reply_text(
-            "❌ Both the member and planner names are required."
-        )
-        return
-
     try:
         member, planner = set_birthday_planner(
             member_name,
@@ -205,6 +191,62 @@ async def set_planner_command(
         "✅ Birthday planner assigned\n\n"
         f"Member: {member.display_name}\n"
         f"Planner: {planner.display_name}"
+    )
+
+
+async def remove_member_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Deactivate a member after an explicit confirmation."""
+
+    if not await check_leader_permission(update):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    if len(context.args) < 2:
+        await message.reply_text(
+            "Usage:\n"
+            "/removemember Member Name confirm\n\n"
+            "Example:\n"
+            "/removemember Declan confirm"
+        )
+        return
+
+    confirmation = context.args[-1].strip().lower()
+
+    if confirmation != "confirm":
+        await message.reply_text(
+            "❌ Removal was not confirmed.\n\n"
+            "Add the word 'confirm' after the member's name.\n\n"
+            "Example:\n"
+            "/removemember Declan confirm"
+        )
+        return
+
+    member_name = " ".join(
+        context.args[:-1]
+    ).strip()
+
+    try:
+        member = deactivate_member(
+            member_name
+        )
+    except ValueError as error:
+        await message.reply_text(
+            f"❌ {error}"
+        )
+        return
+
+    await message.reply_text(
+        "✅ Member removed from the active roster\n\n"
+        f"Name: {member.display_name}\n\n"
+        "They will no longer appear in the member list, "
+        "birthday checks or birthday-planning reminders."
     )
 
 
@@ -302,9 +344,7 @@ async def setup_birthdays_command(
         "✅ Birthday roster updated\n\n"
         f"New members added: {created}\n"
         f"Existing members updated: {updated}\n"
-        f"Planner assignments updated: {planners}\n\n"
-        "Use /listmembers or the control-panel button "
-        "to check the roster."
+        f"Planner assignments updated: {planners}"
     )
 
 
@@ -324,6 +364,13 @@ def register_member_handlers(
         CommandHandler(
             "setplanner",
             set_planner_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "removemember",
+            remove_member_command,
         )
     )
 
