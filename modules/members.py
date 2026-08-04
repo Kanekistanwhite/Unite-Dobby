@@ -1,4 +1,5 @@
 import logging
+from calendar import month_abbr
 
 from telegram import Update
 from telegram.ext import (
@@ -121,13 +122,17 @@ async def add_member_command(
         else "No"
     )
 
+    birthday_month_name = month_abbr[
+        member.birthday_month
+    ].upper()
+
     await message.reply_text(
         "✅ Member added\n\n"
-        f"Name: {member.display_name}\n"
-        f"Birthday: "
-        f"{member.birthday_day:02d}-"
-        f"{member.birthday_month:02d}\n"
-        f"Leader: {leader_text}"
+        f"👤 Name: {member.display_name}\n"
+        f"🎂 Birthday: "
+        f"{member.birthday_day} "
+        f"{birthday_month_name}\n"
+        f"👑 Leader: {leader_text}"
     )
 
 
@@ -189,8 +194,8 @@ async def set_planner_command(
 
     await message.reply_text(
         "✅ Birthday planner assigned\n\n"
-        f"Member: {member.display_name}\n"
-        f"Planner: {planner.display_name}"
+        f"👤 Member: {member.display_name}\n"
+        f"🎁 Planner: {planner.display_name}"
     )
 
 
@@ -244,7 +249,7 @@ async def remove_member_command(
 
     await message.reply_text(
         "✅ Member removed from the active roster\n\n"
-        f"Name: {member.display_name}\n\n"
+        f"👤 Name: {member.display_name}\n\n"
         "They will no longer appear in the member list, "
         "birthday checks or birthday-planning reminders."
     )
@@ -272,7 +277,7 @@ async def list_members_command(
         )
         return
 
-    member_lines: list[str] = []
+    member_sections: list[str] = []
 
     for number, (member, planner_name) in enumerate(
         members,
@@ -281,10 +286,15 @@ async def list_members_command(
         if (
             member.birthday_day is not None
             and member.birthday_month is not None
+            and 1 <= member.birthday_month <= 12
         ):
+            birthday_month_name = month_abbr[
+                member.birthday_month
+            ].upper()
+
             birthday = (
-                f"{member.birthday_day:02d}-"
-                f"{member.birthday_month:02d}"
+                f"{member.birthday_day} "
+                f"{birthday_month_name}"
             )
         else:
             birthday = "Not set"
@@ -297,15 +307,15 @@ async def list_members_command(
 
         planner = planner_name or "Not assigned"
 
-        member_lines.append(
-            f"{number}. {member.display_name}"
-            f"{leader_label} — {birthday}\n"
+        member_sections.append(
+            f"{number}. {member.display_name}{leader_label}\n"
+            f"   🎂 {birthday}\n"
             f"   🎁 Planner: {planner}"
         )
 
     await message.reply_text(
-        "👥 Unite Dobby Members\n\n"
-        + "\n\n".join(member_lines)
+        "👥 UNITE MEMBERS\n\n"
+        + "\n\n".join(member_sections)
     )
 
 
@@ -329,6 +339,7 @@ async def setup_birthdays_command(
 
     try:
         created, updated, planners = seed_birthday_roster()
+
     except Exception:
         logger.exception(
             "The birthday roster could not be updated."
