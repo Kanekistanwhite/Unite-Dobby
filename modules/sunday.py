@@ -260,12 +260,12 @@ def register_sunday_handlers(
             minute=0,
             tzinfo=SINGAPORE_TIMEZONE,
         ),
-        days=(4,),
+        days=(2,),
         name="weekly-sunday-attendance-poll",
     )
 
     logger.info(
         "Sunday attendance poll scheduled for "
-        "Thursday at 8:00 PM Singapore time, topic %s.",
+        "Tuesday at 8:00 PM Singapore time, topic %s.",
         SUNDAY_TOPIC_ID,
     )
