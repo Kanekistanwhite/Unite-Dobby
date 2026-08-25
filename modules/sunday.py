@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time
+from datetime import time
 from zoneinfo import ZoneInfo
 
 from telegram import Bot, Update
@@ -26,46 +26,59 @@ logger = logging.getLogger(__name__)
 
 SINGAPORE_TIMEZONE = ZoneInfo("Asia/Singapore")
 
+
+# ---------------------------------------------------------
+# SUNDAY POLL SETTINGS
+# ---------------------------------------------------------
+
 SUNDAY_POLL_OPTIONS = [
     "⛪ Morning Service",
     "🍽 Lunch",
     "🔥 Youth Service",
     "🤝 Hangout Afterwards",
+    "🙌 Serving",
     "❌ CMI All",
 ]
 
 
-def leader_is_approved(
+# ---------------------------------------------------------
+# PERMISSION CHECK
+# ---------------------------------------------------------
+
+async def check_leader_permission(
     update: Update,
 ) -> bool:
-    """Check whether the user is an approved leader."""
+    """Allow only approved leaders to use Sunday commands."""
 
+    message = update.effective_message
     user = update.effective_user
+
+    if message is None:
+        return False
+
     user_id = user.id if user else None
 
-    return is_approved_leader(user_id)
+    if not is_approved_leader(user_id):
+        await message.reply_text(
+            "⛔ This command is only available to approved leaders."
+        )
+        return False
+
+    return True
 
 
-def get_next_sunday():
-    """Return the upcoming Sunday using Singapore's current date."""
+# ---------------------------------------------------------
+# SEND SUNDAY POLL
+# ---------------------------------------------------------
 
-    today = datetime.now(
-        SINGAPORE_TIMEZONE
-    ).date()
-
-    return get_upcoming_sunday(
-        reference_date=today
-    )
-
-
-async def post_sunday_poll(
+async def send_sunday_poll(
     bot: Bot,
     chat_id: int,
-    message_thread_id: int | None = None,
+    topic_id: int | None = None,
 ) -> None:
-    """Post the customised Sunday attendance poll."""
+    """Send the Sunday attendance message and poll."""
 
-    sunday_date = get_next_sunday()
+    sunday_date = get_upcoming_sunday()
 
     full_date = format_full_date(
         sunday_date
@@ -75,9 +88,13 @@ async def post_sunday_poll(
         sunday_date
     )
 
+    thread_kwargs = {}
+
+    if topic_id is not None:
+        thread_kwargs["message_thread_id"] = topic_id
+
     await bot.send_message(
         chat_id=chat_id,
-        message_thread_id=message_thread_id,
         text=(
             "⛪ SUNDAY ATTENDANCE\n\n"
             f"📅 {full_date}\n\n"
@@ -85,106 +102,164 @@ async def post_sunday_poll(
             "Please select everything that you will be "
             "joining this Sunday."
         ),
+        **thread_kwargs,
     )
 
     await bot.send_poll(
         chat_id=chat_id,
-        message_thread_id=message_thread_id,
         question=(
             "What will you be joining this Sunday?\n"
-            f"{short_date}"
+            f"📅 {short_date}"
         ),
         options=SUNDAY_POLL_OPTIONS,
         is_anonymous=False,
         allows_multiple_answers=True,
-        allows_revoting=True,
-    )
-
-    logger.info(
-        "Sunday attendance poll for %s sent to chat %s, topic %s.",
-        sunday_date,
-        chat_id,
-        message_thread_id,
+        **thread_kwargs,
     )
 
 
-async def send_sunday_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> None:
-    """Post a Sunday poll into the current chat or topic."""
-
-    message = update.effective_message
-    chat = update.effective_chat
-
-    if message is None or chat is None:
-        return
-
-    if not leader_is_approved(update):
-        await message.reply_text(
-            "⛔ This command is only available to approved leaders."
-        )
-        return
-
-    await post_sunday_poll(
-        bot=context.bot,
-        chat_id=chat.id,
-        message_thread_id=message.message_thread_id,
-    )
-
+# ---------------------------------------------------------
+# CONFIGURED SUNDAY POLL
+# ---------------------------------------------------------
 
 async def send_scheduled_sunday_poll(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> bool:
-    """Send the Sunday poll to the configured chat and topic."""
+    """
+    Send the Sunday poll to the configured UNITE destination.
+
+    Returns True when successfully sent.
+    """
 
     if SUNDAY_CHAT_ID is None:
-        logger.warning(
-            "Sunday poll skipped because "
+        logger.error(
             "SUNDAY_CHAT_ID is not configured."
         )
         return False
 
-    await post_sunday_poll(
-        bot=context.bot,
-        chat_id=SUNDAY_CHAT_ID,
-        message_thread_id=SUNDAY_TOPIC_ID,
+    try:
+        await send_sunday_poll(
+            bot=context.bot,
+            chat_id=SUNDAY_CHAT_ID,
+            topic_id=SUNDAY_TOPIC_ID,
+        )
+
+        logger.info(
+            "Sunday attendance poll sent successfully."
+        )
+
+        return True
+
+    except Exception:
+        logger.exception(
+            "Failed to send Sunday attendance poll."
+        )
+
+        return False
+
+
+# ---------------------------------------------------------
+# AUTOMATIC TUESDAY JOB
+# ---------------------------------------------------------
+
+async def scheduled_sunday_job(
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Automatically send the Sunday poll."""
+
+    logger.info(
+        "Running scheduled Sunday attendance poll."
     )
 
-    return True
+    sent = await send_scheduled_sunday_poll(
+        context
+    )
+
+    if not sent:
+        logger.error(
+            "Scheduled Sunday poll was not sent."
+        )
 
 
-async def run_sunday_check_command(
+# ---------------------------------------------------------
+# /testsunday
+# ---------------------------------------------------------
+
+async def test_sunday_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Test the configured Sunday poll destination."""
+    """
+    Send a test Sunday poll into the current chat.
+
+    This does NOT send to the configured UNITE topic.
+    """
+
+    if not await check_leader_permission(update):
+        return
 
     message = update.effective_message
 
     if message is None:
         return
 
-    if not leader_is_approved(update):
-        await message.reply_text(
-            "⛔ This command is only available to approved leaders."
-        )
+    chat = update.effective_chat
+
+    if chat is None:
         return
 
-    if SUNDAY_CHAT_ID is None:
-        await message.reply_text(
-            "❌ SUNDAY_CHAT_ID is not configured."
-        )
-        return
+    topic_id = getattr(
+        message,
+        "message_thread_id",
+        None,
+    )
 
-    if SUNDAY_TOPIC_ID is None:
+    await message.reply_text(
+        "🧪 Sending a test Sunday poll here..."
+    )
+
+    try:
+        await send_sunday_poll(
+            bot=context.bot,
+            chat_id=chat.id,
+            topic_id=topic_id,
+        )
+
+    except Exception:
+        logger.exception(
+            "Test Sunday poll failed."
+        )
+
         await message.reply_text(
-            "❌ SUNDAY_TOPIC_ID is not configured."
+            "❌ The test Sunday poll could not be sent."
         )
         return
 
     await message.reply_text(
-        "🔍 Testing the configured Sunday poll destination..."
+        "✅ Test Sunday poll sent."
+    )
+
+
+# ---------------------------------------------------------
+# /sendsunday
+# ---------------------------------------------------------
+
+async def send_sunday_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Manually send the Sunday poll to the configured destination."""
+
+    if not await check_leader_permission(update):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    await message.reply_text(
+        "⏳ Sending the Sunday poll..."
     )
 
     sent = await send_scheduled_sunday_poll(
@@ -197,25 +272,67 @@ async def run_sunday_check_command(
         )
     else:
         await message.reply_text(
-            "❌ The Sunday poll could not be sent."
+            "❌ The Sunday poll could not be sent.\n\n"
+            "Check the Railway logs and Sunday configuration."
         )
 
+
+# ---------------------------------------------------------
+# /runsundaycheck
+# ---------------------------------------------------------
+
+async def run_sunday_check_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """
+    Run the Sunday poll manually.
+
+    This function is also used by the leader control panel.
+    """
+
+    if not await check_leader_permission(update):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    sent = await send_scheduled_sunday_poll(
+        context
+    )
+
+    if sent:
+        await message.reply_text(
+            "✅ Sunday poll sent successfully."
+        )
+    else:
+        await message.reply_text(
+            "❌ The Sunday poll could not be sent.\n\n"
+            "Check the Railway logs for details."
+        )
+
+
+# ---------------------------------------------------------
+# REGISTER HANDLERS + AUTOMATION
+# ---------------------------------------------------------
 
 def register_sunday_handlers(
     application: Application,
 ) -> None:
-    """Register Sunday commands and the optional scheduler."""
+    """Register Sunday commands and the Tuesday scheduler."""
 
     application.add_handler(
         CommandHandler(
-            "sendsunday",
-            send_sunday_command,
+            "testsunday",
+            test_sunday_command,
         )
     )
 
     application.add_handler(
         CommandHandler(
-            "testsunday",
+            "sendsunday",
             send_sunday_command,
         )
     )
@@ -229,43 +346,29 @@ def register_sunday_handlers(
 
     if not SUNDAY_SCHEDULER_ENABLED:
         logger.info(
-            "Automatic Sunday attendance polls are disabled."
-        )
-        return
-
-    if SUNDAY_CHAT_ID is None:
-        logger.warning(
-            "Sunday scheduler was not started because "
-            "SUNDAY_CHAT_ID is missing."
-        )
-        return
-
-    if SUNDAY_TOPIC_ID is None:
-        logger.warning(
-            "Sunday scheduler was not started because "
-            "SUNDAY_TOPIC_ID is missing."
+            "Sunday scheduler is disabled."
         )
         return
 
     if application.job_queue is None:
-        raise RuntimeError(
-            "Telegram JobQueue is unavailable. "
-            'Install "python-telegram-bot[job-queue]".'
+        logger.error(
+            "JobQueue is unavailable. "
+            "Sunday scheduler was not started."
         )
+        return
 
     application.job_queue.run_daily(
-        callback=send_scheduled_sunday_poll,
+        scheduled_sunday_job,
         time=time(
             hour=20,
             minute=0,
             tzinfo=SINGAPORE_TIMEZONE,
         ),
         days=(2,),
-        name="weekly-sunday-attendance-poll",
+        name="sunday_attendance_poll",
     )
 
     logger.info(
-        "Sunday attendance poll scheduled for "
-        "Tuesday at 8:00 PM Singapore time, topic %s.",
-        SUNDAY_TOPIC_ID,
+        "Sunday scheduler enabled: "
+        "Tuesday at 8:00 PM Singapore time."
     )
