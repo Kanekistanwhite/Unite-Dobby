@@ -210,6 +210,12 @@ def build_events_menu() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
+                "🔔 Send Reminder",
+                callback_data="panel:events:reminder",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 "✅ Complete Deadline",
                 callback_data="panel:events:complete",
             ),
@@ -236,7 +242,7 @@ def build_events_menu() -> InlineKeyboardMarkup:
 
 
 def build_events_back_menu() -> InlineKeyboardMarkup:
-    """Create a simple back button for Events instructions."""
+    """Create a back button for Events Team instructions."""
 
     return InlineKeyboardMarkup(
         [
@@ -251,7 +257,7 @@ def build_events_back_menu() -> InlineKeyboardMarkup:
 
 
 # ---------------------------------------------------------
-# UNITE CONFIRMATIONS
+# UNITE CONFIRMATION MENU
 # ---------------------------------------------------------
 
 def build_confirmation_menu(
@@ -418,7 +424,7 @@ async def run_unite_action(
 
 
 # ---------------------------------------------------------
-# DISPLAY UNITE INFO
+# DISPLAY UNITE INFORMATION
 # ---------------------------------------------------------
 
 async def run_unite_display_action(
@@ -488,7 +494,7 @@ async def run_unite_display_action(
 
 
 # ---------------------------------------------------------
-# EVENTS ACTIONS
+# EVENTS SCHEDULE
 # ---------------------------------------------------------
 
 async def show_events_schedule(
@@ -567,7 +573,10 @@ async def handle_control_panel_callback(
         or ""
     )
 
+    # -----------------------------------------------------
     # MAIN MENU
+    # -----------------------------------------------------
+
     if callback_data == "panel:open":
         await query.edit_message_text(
             CONTROL_PANEL_TEXT,
@@ -577,7 +586,10 @@ async def handle_control_panel_callback(
         )
         return
 
+    # -----------------------------------------------------
     # CLOSE
+    # -----------------------------------------------------
+
     if callback_data == "panel:close":
         await query.edit_message_text(
             "✅ Dobby's control panel has been closed.\n\n"
@@ -607,7 +619,7 @@ async def handle_control_panel_callback(
         return
 
     # -----------------------------------------------------
-    # WORKSPACE: EVENTS
+    # WORKSPACE: EVENTS TEAM
     # -----------------------------------------------------
 
     if callback_data == "panel:workspace:events":
@@ -697,10 +709,11 @@ async def handle_control_panel_callback(
         return
 
     # -----------------------------------------------------
-    # EVENTS SCHEDULE
+    # EVENTS — VIEW SCHEDULE
     # -----------------------------------------------------
 
     if callback_data == "panel:events:schedule":
+
         await show_events_schedule(
             update,
             context,
@@ -724,7 +737,10 @@ async def handle_control_panel_callback(
             "/addeventmeeting DD-MM-YYYY HH:MM | Meeting Name\n\n"
             "Example:\n"
             "/addeventmeeting 15-09-2026 20:00 | "
-            "September Events Meeting",
+            "September Events Meeting\n\n"
+            "🔔 Dobby will automatically remind the team:\n"
+            "• 1 week before at 10:00 AM\n"
+            "• 1 day before at 10:00 AM",
             reply_markup=build_events_back_menu(),
         )
         return
@@ -746,7 +762,37 @@ async def handle_control_panel_callback(
             "/addeventdeadline DD-MM-YYYY | Deadline Name\n\n"
             "Example:\n"
             "/addeventdeadline 25-09-2026 | "
-            "Finalise Event Proposal",
+            "Finalise Event Proposal\n\n"
+            "🔔 Dobby will automatically remind the team:\n"
+            "• 3 days before at 10:00 AM\n"
+            "• Deadline day at 10:00 AM",
+            reply_markup=build_events_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # EVENTS — SEND MANUAL REMINDER
+    # -----------------------------------------------------
+
+    if callback_data == "panel:events:reminder":
+
+        if not is_events_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "🔔 SEND MEETING REMINDER\n\n"
+            "First press 📋 View Schedule to find "
+            "the meeting ID.\n\n"
+            "Then send:\n\n"
+            "/sendeventreminder ID\n\n"
+            "Example:\n"
+            "/sendeventreminder 3\n\n"
+            "Dobby will immediately send a reminder "
+            "to the Events Team group.\n\n"
+            "✅ This does NOT affect the automatic "
+            "1-week or 1-day reminders.",
             reply_markup=build_events_back_menu(),
         )
         return
@@ -764,12 +810,14 @@ async def handle_control_panel_callback(
 
         await query.edit_message_text(
             "✅ COMPLETE DEADLINE\n\n"
-            "First check 📋 View Schedule to find "
+            "First press 📋 View Schedule to find "
             "the deadline ID.\n\n"
             "Then send:\n\n"
             "/completeevent ID\n\n"
             "Example:\n"
-            "/completeevent 2",
+            "/completeevent 2\n\n"
+            "Once completed, Dobby will stop sending "
+            "reminders for that deadline.",
             reply_markup=build_events_back_menu(),
         )
         return
@@ -787,17 +835,21 @@ async def handle_control_panel_callback(
 
         await query.edit_message_text(
             "❌ CANCEL EVENTS ITEM\n\n"
-            "First check 📋 View Schedule to find "
-            "the meeting/deadline ID.\n\n"
+            "First press 📋 View Schedule to find "
+            "the meeting or deadline ID.\n\n"
             "Then send:\n\n"
             "/cancelevent ID\n\n"
             "Example:\n"
-            "/cancelevent 3",
+            "/cancelevent 3\n\n"
+            "Cancelled items will no longer receive reminders.",
             reply_markup=build_events_back_menu(),
         )
         return
 
-    # UNKNOWN
+    # -----------------------------------------------------
+    # UNKNOWN CALLBACK
+    # -----------------------------------------------------
+
     await query.edit_message_text(
         "❌ That control-panel option is no longer available.\n\n"
         "Please reopen the menu.",

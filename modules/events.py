@@ -19,6 +19,7 @@ from services.events_service import (
     cancel_events_item,
     complete_deadline,
     create_events_item,
+    get_events_item,
     get_events_items_for_reminders,
     get_singapore_now,
     get_upcoming_events_items,
@@ -429,6 +430,112 @@ async def cancel_event_command(
     )
 
 
+async def send_event_reminder_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Manually send a reminder for a meeting."""
+
+    if not await check_events_permission(update):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    if len(context.args) != 1:
+        await message.reply_text(
+            "Usage:\n"
+            "/sendeventreminder ID\n\n"
+            "Example:\n"
+            "/sendeventreminder 3"
+        )
+        return
+
+    try:
+        item_id = int(
+            context.args[0]
+        )
+    except ValueError:
+        await message.reply_text(
+            "❌ The ID must be a number."
+        )
+        return
+
+    item = get_events_item(
+        item_id
+    )
+
+    if item is None:
+        await message.reply_text(
+            f"❌ Events item #{item_id} was not found."
+        )
+        return
+
+    if item.item_type != "meeting":
+        await message.reply_text(
+            f"❌ #{item.id} is not a meeting."
+        )
+        return
+
+    if item.is_cancelled:
+        await message.reply_text(
+            f"❌ #{item.id} has been cancelled."
+        )
+        return
+
+    if item.scheduled_at <= get_singapore_now():
+        await message.reply_text(
+            "❌ This meeting has already passed."
+        )
+        return
+
+    if EVENTS_CHAT_ID is None:
+        await message.reply_text(
+            "❌ EVENTS_CHAT_ID is not configured."
+        )
+        return
+
+    thread_kwargs = {}
+
+    if EVENTS_TOPIC_ID is not None:
+        thread_kwargs[
+            "message_thread_id"
+        ] = EVENTS_TOPIC_ID
+
+    reminder_text = (
+        "📣 EVENTS TEAM MEETING REMINDER\n\n"
+        f"📅 {item.title}\n"
+        f"🗓 {format_events_datetime('meeting', item.scheduled_at)}\n\n"
+        "Just a reminder for our upcoming meeting! 🙌"
+    )
+
+    try:
+        await context.bot.send_message(
+            chat_id=EVENTS_CHAT_ID,
+            text=reminder_text,
+            **thread_kwargs,
+        )
+    except Exception:
+        logger.exception(
+            "Manual Events meeting reminder failed."
+        )
+
+        await message.reply_text(
+            "❌ The meeting reminder could not be sent.\n\n"
+            "Check the Railway logs for details."
+        )
+        return
+
+    await message.reply_text(
+        "✅ MEETING REMINDER SENT\n\n"
+        f"#{item.id} — {item.title}\n\n"
+        "The automatic 1-week and 1-day reminders "
+        "are still scheduled as normal."
+    )
+
+
 async def send_events_reminders(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> int:
@@ -583,7 +690,7 @@ async def run_events_reminder_check_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Manually run the Events reminder check."""
+    """Manually run the automatic Events reminder check."""
 
     if not await check_events_permission(update):
         return
@@ -646,6 +753,13 @@ def register_events_handlers(
         CommandHandler(
             "cancelevent",
             cancel_event_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "sendeventreminder",
+            send_event_reminder_command,
         )
     )
 
