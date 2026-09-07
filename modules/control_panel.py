@@ -23,19 +23,108 @@ from modules.biweekly import (
     list_biweekly_command,
     run_biweekly_check_command,
 )
+from modules.events import (
+    events_schedule_command,
+    is_events_leader,
+)
 from modules.members import list_members_command
 from modules.sunday import run_sunday_check_command
 from services.permissions import is_approved_leader
 
 
+# ---------------------------------------------------------
+# PANEL TEXT
+# ---------------------------------------------------------
+
 CONTROL_PANEL_TEXT = (
-    "🧰 UNITE DOBBY — LEADER CONTROL PANEL\n\n"
+    "🧰 DOBBY CONTROL PANEL\n\n"
+    "Which team would you like to manage?"
+)
+
+UNITE_PANEL_TEXT = (
+    "🏠 UNITE\n\n"
+    "Choose what you would like Dobby to do:"
+)
+
+EVENTS_PANEL_TEXT = (
+    "🎉 ACTS EVENTS TEAM\n\n"
     "Choose what you would like Dobby to do:"
 )
 
 
-def build_main_menu() -> InlineKeyboardMarkup:
-    """Create the main leader control-panel buttons."""
+# ---------------------------------------------------------
+# ACCESS
+# ---------------------------------------------------------
+
+def has_any_panel_access(
+    user_id: int | None,
+) -> bool:
+    """Check whether the user has access to any Dobby workspace."""
+
+    return (
+        is_approved_leader(user_id)
+        or is_events_leader(user_id)
+    )
+
+
+# ---------------------------------------------------------
+# MAIN WORKSPACE MENU
+# ---------------------------------------------------------
+
+def build_workspace_menu(
+    user_id: int | None,
+) -> InlineKeyboardMarkup:
+    """Build the workspace-selection menu."""
+
+    keyboard = []
+
+    workspace_row = []
+
+    if is_approved_leader(user_id):
+        workspace_row.append(
+            InlineKeyboardButton(
+                "🏠 UNITE",
+                callback_data="panel:workspace:unite",
+            )
+        )
+
+    if is_events_leader(user_id):
+        workspace_row.append(
+            InlineKeyboardButton(
+                "🎉 EVENTS TEAM",
+                callback_data="panel:workspace:events",
+            )
+        )
+
+    if workspace_row:
+        keyboard.append(
+            workspace_row
+        )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "👤 My ID",
+                callback_data="panel:show:myid",
+            ),
+            InlineKeyboardButton(
+                "❌ Close",
+                callback_data="panel:close",
+            ),
+        ]
+    )
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+# ---------------------------------------------------------
+# UNITE MENU
+# ---------------------------------------------------------
+
+def build_unite_menu() -> InlineKeyboardMarkup:
+    """Create the UNITE leader control panel."""
 
     keyboard = [
         [
@@ -80,8 +169,8 @@ def build_main_menu() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                "👤 My ID",
-                callback_data="panel:show:myid",
+                "⬅️ Back",
+                callback_data="panel:open",
             ),
             InlineKeyboardButton(
                 "❌ Close",
@@ -90,13 +179,85 @@ def build_main_menu() -> InlineKeyboardMarkup:
         ],
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
+
+# ---------------------------------------------------------
+# EVENTS MENU
+# ---------------------------------------------------------
+
+def build_events_menu() -> InlineKeyboardMarkup:
+    """Create the Events Team control panel."""
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📋 View Schedule",
+                callback_data="panel:events:schedule",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "➕ Add Meeting",
+                callback_data="panel:events:addmeeting",
+            ),
+            InlineKeyboardButton(
+                "➕ Add Deadline",
+                callback_data="panel:events:adddeadline",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "✅ Complete Deadline",
+                callback_data="panel:events:complete",
+            ),
+            InlineKeyboardButton(
+                "❌ Cancel Item",
+                callback_data="panel:events:cancel",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Back",
+                callback_data="panel:open",
+            ),
+            InlineKeyboardButton(
+                "❌ Close",
+                callback_data="panel:close",
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+def build_events_back_menu() -> InlineKeyboardMarkup:
+    """Create a simple back button for Events instructions."""
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "⬅️ Back to Events",
+                    callback_data="panel:workspace:events",
+                )
+            ]
+        ]
+    )
+
+
+# ---------------------------------------------------------
+# UNITE CONFIRMATIONS
+# ---------------------------------------------------------
 
 def build_confirmation_menu(
     action_name: str,
 ) -> InlineKeyboardMarkup:
-    """Create confirmation buttons for an action."""
+    """Create confirmation buttons for a UNITE action."""
 
     keyboard = [
         [
@@ -106,41 +267,44 @@ def build_confirmation_menu(
             ),
             InlineKeyboardButton(
                 "⬅️ Back",
-                callback_data="panel:open",
+                callback_data="panel:workspace:unite",
             ),
         ]
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
 
 def get_confirmation_text(
     action_name: str,
 ) -> str:
-    """Return the confirmation message for an action."""
+    """Return confirmation text for a UNITE action."""
 
     confirmation_messages = {
         "sunday": (
             "⛪ SEND SUNDAY POLL\n\n"
-            "Are you sure you want Dobby to run the Sunday "
-            "attendance check now?\n\n"
+            "Are you sure you want Dobby to send "
+            "the Sunday attendance poll now?\n\n"
             "A poll may be sent to the UNITE group."
         ),
         "biweekly": (
             "🏠 RUN BI-WEEKLY CHECK\n\n"
-            "Are you sure you want Dobby to check for pending "
-            "bi-weekly attendance polls now?"
+            "Are you sure you want Dobby to check "
+            "for pending bi-weekly attendance polls?"
         ),
         "birthday": (
             "🎂 RUN BIRTHDAY CHECK\n\n"
-            "Are you sure you want Dobby to check for today's "
-            "birthdays now?\n\n"
-            "A birthday greeting may be sent to the UNITE group."
+            "Are you sure you want Dobby to check "
+            "for today's birthdays?\n\n"
+            "A birthday greeting may be sent "
+            "to the UNITE group."
         ),
         "planning": (
             "🎁 RUN PLANNING CHECK\n\n"
-            "Are you sure you want Dobby to check for pending "
-            "birthday-planning reminders now?"
+            "Are you sure you want Dobby to check "
+            "for pending birthday-planning reminders?"
         ),
     }
 
@@ -150,11 +314,15 @@ def get_confirmation_text(
     )
 
 
+# ---------------------------------------------------------
+# /MENU
+# ---------------------------------------------------------
+
 async def menu_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Open the leader control panel."""
+    """Open Dobby's workspace control panel."""
 
     message = update.effective_message
     user = update.effective_user
@@ -162,9 +330,15 @@ async def menu_command(
     if message is None:
         return
 
-    user_id = user.id if user else None
+    user_id = (
+        user.id
+        if user
+        else None
+    )
 
-    if not is_approved_leader(user_id):
+    if not has_any_panel_access(
+        user_id
+    ):
         await message.reply_text(
             "⛔ This control panel is only available "
             "to approved leaders."
@@ -173,20 +347,42 @@ async def menu_command(
 
     await message.reply_text(
         CONTROL_PANEL_TEXT,
-        reply_markup=build_main_menu(),
+        reply_markup=build_workspace_menu(
+            user_id
+        ),
     )
 
 
-async def run_confirmed_action(
+# ---------------------------------------------------------
+# RUN UNITE ACTION
+# ---------------------------------------------------------
+
+async def run_unite_action(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     action_name: str,
 ) -> None:
-    """Run a confirmed control-panel action."""
+    """Run a confirmed UNITE action."""
 
     query = update.callback_query
+    user = update.effective_user
 
     if query is None:
+        return
+
+    user_id = (
+        user.id
+        if user
+        else None
+    )
+
+    if not is_approved_leader(
+        user_id
+    ):
+        await query.edit_message_text(
+            "⛔ You do not have permission "
+            "to manage UNITE."
+        )
         return
 
     action_handlers = {
@@ -202,8 +398,7 @@ async def run_confirmed_action(
 
     if action_handler is None:
         await query.edit_message_text(
-            "❌ That action could not be found.",
-            reply_markup=build_main_menu(),
+            "❌ That action could not be found."
         )
         return
 
@@ -217,21 +412,42 @@ async def run_confirmed_action(
     )
 
     await query.edit_message_text(
-        CONTROL_PANEL_TEXT,
-        reply_markup=build_main_menu(),
+        UNITE_PANEL_TEXT,
+        reply_markup=build_unite_menu(),
     )
 
 
-async def run_display_action(
+# ---------------------------------------------------------
+# DISPLAY UNITE INFO
+# ---------------------------------------------------------
+
+async def run_unite_display_action(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     action_name: str,
 ) -> None:
-    """Run an information-display action."""
+    """Run an information command for UNITE."""
 
     query = update.callback_query
+    user = update.effective_user
 
     if query is None:
+        return
+
+    user_id = (
+        user.id
+        if user
+        else None
+    )
+
+    if (
+        action_name != "myid"
+        and not is_approved_leader(user_id)
+    ):
+        await query.edit_message_text(
+            "⛔ You do not have permission "
+            "to manage UNITE."
+        )
         return
 
     action_handlers = {
@@ -248,8 +464,7 @@ async def run_display_action(
 
     if action_handler is None:
         await query.edit_message_text(
-            "❌ That option could not be found.",
-            reply_markup=build_main_menu(),
+            "❌ That option could not be found."
         )
         return
 
@@ -258,17 +473,71 @@ async def run_display_action(
         context,
     )
 
-    await query.edit_message_text(
-        CONTROL_PANEL_TEXT,
-        reply_markup=build_main_menu(),
+    if action_name == "myid":
+        await query.edit_message_text(
+            CONTROL_PANEL_TEXT,
+            reply_markup=build_workspace_menu(
+                user_id
+            ),
+        )
+    else:
+        await query.edit_message_text(
+            UNITE_PANEL_TEXT,
+            reply_markup=build_unite_menu(),
+        )
+
+
+# ---------------------------------------------------------
+# EVENTS ACTIONS
+# ---------------------------------------------------------
+
+async def show_events_schedule(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Show the Events Team schedule."""
+
+    query = update.callback_query
+    user = update.effective_user
+
+    if query is None:
+        return
+
+    user_id = (
+        user.id
+        if user
+        else None
     )
 
+    if not is_events_leader(
+        user_id
+    ):
+        await query.edit_message_text(
+            "⛔ You do not have permission "
+            "to manage Events Team."
+        )
+        return
+
+    await events_schedule_command(
+        update,
+        context,
+    )
+
+    await query.edit_message_text(
+        EVENTS_PANEL_TEXT,
+        reply_markup=build_events_menu(),
+    )
+
+
+# ---------------------------------------------------------
+# CALLBACK HANDLER
+# ---------------------------------------------------------
 
 async def handle_control_panel_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Handle all control-panel button presses."""
+    """Handle all Dobby control-panel button presses."""
 
     query = update.callback_query
     user = update.effective_user
@@ -278,46 +547,120 @@ async def handle_control_panel_callback(
 
     await query.answer()
 
-    user_id = user.id if user else None
+    user_id = (
+        user.id
+        if user
+        else None
+    )
 
-    if not is_approved_leader(user_id):
+    if not has_any_panel_access(
+        user_id
+    ):
         await query.edit_message_text(
             "⛔ This control panel is only available "
             "to approved leaders."
         )
         return
 
-    callback_data = query.data or ""
+    callback_data = (
+        query.data
+        or ""
+    )
 
+    # MAIN MENU
     if callback_data == "panel:open":
         await query.edit_message_text(
             CONTROL_PANEL_TEXT,
-            reply_markup=build_main_menu(),
+            reply_markup=build_workspace_menu(
+                user_id
+            ),
         )
         return
 
+    # CLOSE
     if callback_data == "panel:close":
         await query.edit_message_text(
-            "✅ UNITE Dobby's control panel has been closed.\n\n"
+            "✅ Dobby's control panel has been closed.\n\n"
             "Send /menu to open it again."
         )
         return
 
+    # -----------------------------------------------------
+    # WORKSPACE: UNITE
+    # -----------------------------------------------------
+
+    if callback_data == "panel:workspace:unite":
+
+        if not is_approved_leader(
+            user_id
+        ):
+            await query.edit_message_text(
+                "⛔ You do not have permission "
+                "to manage UNITE."
+            )
+            return
+
+        await query.edit_message_text(
+            UNITE_PANEL_TEXT,
+            reply_markup=build_unite_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # WORKSPACE: EVENTS
+    # -----------------------------------------------------
+
+    if callback_data == "panel:workspace:events":
+
+        if not is_events_leader(
+            user_id
+        ):
+            await query.edit_message_text(
+                "⛔ You do not have permission "
+                "to manage Events Team."
+            )
+            return
+
+        await query.edit_message_text(
+            EVENTS_PANEL_TEXT,
+            reply_markup=build_events_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # UNITE CONFIRMATIONS
+    # -----------------------------------------------------
+
     if callback_data.startswith(
         "panel:confirm:"
     ):
+        if not is_approved_leader(
+            user_id
+        ):
+            await query.edit_message_text(
+                "⛔ You do not have permission "
+                "to manage UNITE."
+            )
+            return
+
         action_name = callback_data.split(
             ":",
             maxsplit=2,
         )[2]
 
         await query.edit_message_text(
-            get_confirmation_text(action_name),
+            get_confirmation_text(
+                action_name
+            ),
             reply_markup=build_confirmation_menu(
                 action_name
             ),
         )
         return
+
+    # -----------------------------------------------------
+    # RUN UNITE ACTION
+    # -----------------------------------------------------
 
     if callback_data.startswith(
         "panel:run:"
@@ -327,12 +670,16 @@ async def handle_control_panel_callback(
             maxsplit=2,
         )[2]
 
-        await run_confirmed_action(
+        await run_unite_action(
             update,
             context,
             action_name,
         )
         return
+
+    # -----------------------------------------------------
+    # UNITE INFORMATION
+    # -----------------------------------------------------
 
     if callback_data.startswith(
         "panel:show:"
@@ -342,24 +689,132 @@ async def handle_control_panel_callback(
             maxsplit=2,
         )[2]
 
-        await run_display_action(
+        await run_unite_display_action(
             update,
             context,
             action_name,
         )
         return
 
+    # -----------------------------------------------------
+    # EVENTS SCHEDULE
+    # -----------------------------------------------------
+
+    if callback_data == "panel:events:schedule":
+        await show_events_schedule(
+            update,
+            context,
+        )
+        return
+
+    # -----------------------------------------------------
+    # EVENTS — ADD MEETING
+    # -----------------------------------------------------
+
+    if callback_data == "panel:events:addmeeting":
+
+        if not is_events_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "➕ ADD EVENTS MEETING\n\n"
+            "Send:\n\n"
+            "/addeventmeeting DD-MM-YYYY HH:MM | Meeting Name\n\n"
+            "Example:\n"
+            "/addeventmeeting 15-09-2026 20:00 | "
+            "September Events Meeting",
+            reply_markup=build_events_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # EVENTS — ADD DEADLINE
+    # -----------------------------------------------------
+
+    if callback_data == "panel:events:adddeadline":
+
+        if not is_events_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "➕ ADD EVENTS DEADLINE\n\n"
+            "Send:\n\n"
+            "/addeventdeadline DD-MM-YYYY | Deadline Name\n\n"
+            "Example:\n"
+            "/addeventdeadline 25-09-2026 | "
+            "Finalise Event Proposal",
+            reply_markup=build_events_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # EVENTS — COMPLETE DEADLINE
+    # -----------------------------------------------------
+
+    if callback_data == "panel:events:complete":
+
+        if not is_events_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "✅ COMPLETE DEADLINE\n\n"
+            "First check 📋 View Schedule to find "
+            "the deadline ID.\n\n"
+            "Then send:\n\n"
+            "/completeevent ID\n\n"
+            "Example:\n"
+            "/completeevent 2",
+            reply_markup=build_events_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # EVENTS — CANCEL ITEM
+    # -----------------------------------------------------
+
+    if callback_data == "panel:events:cancel":
+
+        if not is_events_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "❌ CANCEL EVENTS ITEM\n\n"
+            "First check 📋 View Schedule to find "
+            "the meeting/deadline ID.\n\n"
+            "Then send:\n\n"
+            "/cancelevent ID\n\n"
+            "Example:\n"
+            "/cancelevent 3",
+            reply_markup=build_events_back_menu(),
+        )
+        return
+
+    # UNKNOWN
     await query.edit_message_text(
         "❌ That control-panel option is no longer available.\n\n"
         "Please reopen the menu.",
-        reply_markup=build_main_menu(),
+        reply_markup=build_workspace_menu(
+            user_id
+        ),
     )
 
+
+# ---------------------------------------------------------
+# REGISTER
+# ---------------------------------------------------------
 
 def register_control_panel_handlers(
     application: Application,
 ) -> None:
-    """Register the leader control-panel handlers."""
+    """Register Dobby's control-panel handlers."""
 
     application.add_handler(
         CommandHandler(
