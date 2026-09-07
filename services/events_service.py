@@ -1,9 +1,23 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
 from database.database import SessionLocal
 from models.events_item import EventsItem
+
+
+SINGAPORE_TIMEZONE = ZoneInfo("Asia/Singapore")
+
+
+def get_singapore_now() -> datetime:
+    """Return current Singapore time without timezone information."""
+
+    return datetime.now(
+        SINGAPORE_TIMEZONE
+    ).replace(
+        tzinfo=None
+    )
 
 
 def create_events_item(
@@ -46,7 +60,7 @@ def create_events_item(
 def get_upcoming_events_items() -> list[EventsItem]:
     """Return upcoming active Events Team items."""
 
-    now = datetime.now()
+    now = get_singapore_now()
 
     with SessionLocal() as session:
         items = session.scalars(
@@ -62,6 +76,76 @@ def get_upcoming_events_items() -> list[EventsItem]:
         ).all()
 
         return list(items)
+
+
+def get_events_items_for_reminders() -> list[EventsItem]:
+    """Return active items that may need reminders."""
+
+    now = get_singapore_now()
+
+    today_start = now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    with SessionLocal() as session:
+        items = session.scalars(
+            select(EventsItem)
+            .where(
+                EventsItem.is_cancelled.is_(False),
+                EventsItem.scheduled_at >= today_start,
+            )
+            .order_by(
+                EventsItem.scheduled_at,
+                EventsItem.id,
+            )
+        ).all()
+
+        return list(items)
+
+
+def mark_events_reminder_sent(
+    item_id: int,
+    reminder_type: str,
+) -> None:
+    """Record that an Events reminder was successfully sent."""
+
+    field_map = {
+        "meeting_week": "reminder_3d_sent",
+        "meeting_day": "reminder_1d_sent",
+        "deadline_3d": "reminder_3d_sent",
+        "deadline_day": "deadline_day_sent",
+    }
+
+    field_name = field_map.get(
+        reminder_type
+    )
+
+    if field_name is None:
+        raise ValueError(
+            "Unknown Events reminder type."
+        )
+
+    with SessionLocal() as session:
+        item = session.get(
+            EventsItem,
+            item_id,
+        )
+
+        if item is None:
+            raise ValueError(
+                f"Events item #{item_id} was not found."
+            )
+
+        setattr(
+            item,
+            field_name,
+            True,
+        )
+
+        session.commit()
 
 
 def get_events_item(
