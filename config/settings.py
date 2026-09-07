@@ -45,8 +45,8 @@ def parse_user_ids(
             user_ids.add(int(cleaned_item))
         except ValueError as error:
             raise RuntimeError(
-                "LEADER_USER_IDS must contain only Telegram user IDs "
-                "separated by commas."
+                "User ID variables must contain only Telegram "
+                "user IDs separated by commas."
             ) from error
 
     return user_ids
@@ -91,17 +91,28 @@ def read_boolean(
     return value == "true"
 
 
-# Telegram bot configuration.
+# ---------------------------------------------------------
+# TELEGRAM BOT
+# ---------------------------------------------------------
+
 BOT_TOKEN = require_environment_variable(
     "BOT_TOKEN"
 )
+
+
+# ---------------------------------------------------------
+# UNITE LEADER ACCESS
+# ---------------------------------------------------------
 
 LEADER_USER_IDS = parse_user_ids(
     os.getenv("LEADER_USER_IDS", "")
 )
 
 
-# Public birthday greeting configuration.
+# ---------------------------------------------------------
+# BIRTHDAY GREETINGS
+# ---------------------------------------------------------
+
 BIRTHDAY_CHAT_ID = read_optional_int(
     "BIRTHDAY_CHAT_ID"
 )
@@ -118,7 +129,10 @@ BIRTHDAY_SCHEDULER_ENABLED = read_boolean(
 )
 
 
-# Private birthday-planning reminder configuration.
+# ---------------------------------------------------------
+# BIRTHDAY PLANNING
+# ---------------------------------------------------------
+
 BIRTHDAY_PLANNING_CHAT_ID = read_optional_int(
     "BIRTHDAY_PLANNING_CHAT_ID"
 )
@@ -129,7 +143,10 @@ BIRTHDAY_PLANNING_SCHEDULER_ENABLED = read_boolean(
 )
 
 
-# Sunday attendance configuration.
+# ---------------------------------------------------------
+# SUNDAY ATTENDANCE
+# ---------------------------------------------------------
+
 SUNDAY_CHAT_ID = read_optional_int(
     "SUNDAY_CHAT_ID"
 )
@@ -144,7 +161,10 @@ SUNDAY_SCHEDULER_ENABLED = read_boolean(
 )
 
 
-# Bi-weekly attendance configuration.
+# ---------------------------------------------------------
+# BI-WEEKLY ATTENDANCE
+# ---------------------------------------------------------
+
 BIWEEKLY_CHAT_ID = read_optional_int(
     "BIWEEKLY_CHAT_ID"
 )
@@ -155,5 +175,27 @@ BIWEEKLY_TOPIC_ID = read_optional_int(
 
 BIWEEKLY_SCHEDULER_ENABLED = read_boolean(
     "BIWEEKLY_SCHEDULER_ENABLED",
+    default=False,
+)
+
+
+# ---------------------------------------------------------
+# EVENTS TEAM
+# ---------------------------------------------------------
+
+EVENTS_CHAT_ID = read_optional_int(
+    "EVENTS_CHAT_ID"
+)
+
+EVENTS_TOPIC_ID = read_optional_int(
+    "EVENTS_TOPIC_ID"
+)
+
+EVENTS_LEADER_USER_IDS = parse_user_ids(
+    os.getenv("EVENTS_LEADER_USER_IDS", "")
+)
+
+EVENTS_SCHEDULER_ENABLED = read_boolean(
+    "EVENTS_SCHEDULER_ENABLED",
     default=False,
 )
