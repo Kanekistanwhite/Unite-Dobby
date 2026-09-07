@@ -13,6 +13,7 @@ from modules.biweekly import register_biweekly_handlers
 from modules.control_panel import (
     register_control_panel_handlers,
 )
+from modules.events import register_events_handlers
 from modules.members import register_member_handlers
 from modules.start import register_start_handlers
 from modules.sunday import register_sunday_handlers
@@ -26,7 +27,9 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-logging.getLogger("httpx").setLevel(
+logging.getLogger(
+    "httpx"
+).setLevel(
     logging.WARNING
 )
 
@@ -56,10 +59,13 @@ def main() -> None:
     register_start_handlers(application)
     register_admin_handlers(application)
     register_control_panel_handlers(application)
+
     register_sunday_handlers(application)
     register_biweekly_handlers(application)
     register_member_handlers(application)
     register_birthday_handlers(application)
+
+    register_events_handlers(application)
 
     logger.info(
         "Unite Dobby is running..."
