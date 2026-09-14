@@ -10,6 +10,9 @@ from database.database import (
 from modules.admin import register_admin_handlers
 from modules.birthdays import register_birthday_handlers
 from modules.biweekly import register_biweekly_handlers
+from modules.care_birthdays import (
+    register_care_birthday_handlers,
+)
 from modules.control_panel import (
     register_control_panel_handlers,
 )
@@ -33,11 +36,13 @@ logging.getLogger(
     logging.WARNING
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    __name__
+)
 
 
 def main() -> None:
-    """Start Unite Dobby."""
+    """Start Dobby."""
 
     logger.info(
         "Initialising database at %s",
@@ -56,19 +61,44 @@ def main() -> None:
         .build()
     )
 
-    register_start_handlers(application)
-    register_admin_handlers(application)
-    register_control_panel_handlers(application)
+    register_start_handlers(
+        application
+    )
 
-    register_sunday_handlers(application)
-    register_biweekly_handlers(application)
-    register_member_handlers(application)
-    register_birthday_handlers(application)
+    register_admin_handlers(
+        application
+    )
 
-    register_events_handlers(application)
+    register_control_panel_handlers(
+        application
+    )
+
+    register_sunday_handlers(
+        application
+    )
+
+    register_biweekly_handlers(
+        application
+    )
+
+    register_member_handlers(
+        application
+    )
+
+    register_birthday_handlers(
+        application
+    )
+
+    register_events_handlers(
+        application
+    )
+
+    register_care_birthday_handlers(
+        application
+    )
 
     logger.info(
-        "Unite Dobby is running..."
+        "Dobby is running..."
     )
 
     application.run_polling(

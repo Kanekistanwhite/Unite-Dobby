@@ -3,12 +3,12 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    sessionmaker,
+)
 
 
-# Local development uses database/unite_dobby.db.
-# Railway overrides this with:
-# DATABASE_PATH=/data/unite_dobby.db
 DEFAULT_DATABASE_PATH = (
     Path(__file__).resolve().parent
     / "unite_dobby.db"
@@ -56,6 +56,7 @@ def init_database() -> None:
     """Create all database tables that do not already exist."""
 
     import models.biweekly_event  # noqa: F401
+    import models.care_birthday_member  # noqa: F401
     import models.events_item  # noqa: F401
     import models.member  # noqa: F401
 

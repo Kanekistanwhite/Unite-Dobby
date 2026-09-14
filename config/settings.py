@@ -18,7 +18,10 @@ def require_environment_variable(
 ) -> str:
     """Read a required environment variable."""
 
-    value = os.getenv(variable_name, "").strip()
+    value = os.getenv(
+        variable_name,
+        "",
+    ).strip()
 
     if not value:
         raise RuntimeError(
@@ -42,7 +45,9 @@ def parse_user_ids(
             continue
 
         try:
-            user_ids.add(int(cleaned_item))
+            user_ids.add(
+                int(cleaned_item)
+            )
         except ValueError as error:
             raise RuntimeError(
                 "User ID variables must contain only Telegram "
@@ -57,7 +62,10 @@ def read_optional_int(
 ) -> int | None:
     """Read an optional integer environment variable."""
 
-    value = os.getenv(variable_name, "").strip()
+    value = os.getenv(
+        variable_name,
+        "",
+    ).strip()
 
     if not value:
         return None
@@ -76,14 +84,22 @@ def read_boolean(
 ) -> bool:
     """Read a true-or-false environment variable."""
 
-    raw_value = os.getenv(variable_name)
+    raw_value = os.getenv(
+        variable_name
+    )
 
-    if raw_value is None or not raw_value.strip():
+    if (
+        raw_value is None
+        or not raw_value.strip()
+    ):
         return default
 
     value = raw_value.strip().lower()
 
-    if value not in {"true", "false"}:
+    if value not in {
+        "true",
+        "false",
+    }:
         raise RuntimeError(
             f"{variable_name} must be either true or false."
         )
@@ -105,7 +121,10 @@ BOT_TOKEN = require_environment_variable(
 # ---------------------------------------------------------
 
 LEADER_USER_IDS = parse_user_ids(
-    os.getenv("LEADER_USER_IDS", "")
+    os.getenv(
+        "LEADER_USER_IDS",
+        "",
+    )
 )
 
 
@@ -117,8 +136,6 @@ BIRTHDAY_CHAT_ID = read_optional_int(
     "BIRTHDAY_CHAT_ID"
 )
 
-# Leave blank when birthday greetings should be posted
-# in the main/General chat instead of a specific topic.
 BIRTHDAY_TOPIC_ID = read_optional_int(
     "BIRTHDAY_TOPIC_ID"
 )
@@ -192,10 +209,34 @@ EVENTS_TOPIC_ID = read_optional_int(
 )
 
 EVENTS_LEADER_USER_IDS = parse_user_ids(
-    os.getenv("EVENTS_LEADER_USER_IDS", "")
+    os.getenv(
+        "EVENTS_LEADER_USER_IDS",
+        "",
+    )
 )
 
 EVENTS_SCHEDULER_ENABLED = read_boolean(
     "EVENTS_SCHEDULER_ENABLED",
     default=False,
 )
+
+
+# ---------------------------------------------------------
+# CARE TEAM
+# ---------------------------------------------------------
+
+CARE_LEADER_USER_IDS = parse_user_ids(
+    os.getenv(
+        "CARE_LEADER_USER_IDS",
+        "",
+    )
+)
+
+CARE_BIRTHDAY_SCHEDULER_ENABLED = read_boolean(
+    "CARE_BIRTHDAY_SCHEDULER_ENABLED",
+    default=False,
+)
+
+# We will add the CARE Team reminder destination
+# and Youth Ministry announcement destination later,
+# after their Chat IDs / Topic IDs are confirmed.
