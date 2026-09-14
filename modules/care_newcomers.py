@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -19,6 +17,7 @@ from services.care_newcomer_service import (
     get_singapore_today,
     give_pack_to_newcomer,
     register_newcomer,
+    remove_newcomer,
     set_newcomer_stock,
 )
 
@@ -155,10 +154,6 @@ async def add_newcomer_command(
 
         return
 
-    # -----------------------------------------------------
-    # DUPLICATE
-    # -----------------------------------------------------
-
     if status == "duplicate":
 
         await message.reply_text(
@@ -171,10 +166,6 @@ async def add_newcomer_command(
         )
 
         return
-
-    # -----------------------------------------------------
-    # SUCCESS — PACK GIVEN
-    # -----------------------------------------------------
 
     if status == "registered":
 
@@ -209,10 +200,6 @@ async def add_newcomer_command(
         )
 
         return
-
-    # -----------------------------------------------------
-    # SUCCESS — NO PACK AVAILABLE
-    # -----------------------------------------------------
 
     await message.reply_text(
         "✅ NEWCOMER REGISTERED\n\n"
@@ -561,6 +548,156 @@ async def give_pack_command(
 
 
 # =========================================================
+# REMOVE / UNDO NEWCOMER
+# =========================================================
+
+async def remove_newcomer_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Safely remove a newcomer entered by mistake."""
+
+    if not await check_care_permission(
+        update
+    ):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    raw_text = " ".join(
+        context.args
+    ).strip()
+
+    if not raw_text:
+
+        await message.reply_text(
+            "Usage:\n"
+            "/removenewcomer NAME\n\n"
+            "Example:\n"
+            "/removenewcomer John Tan"
+        )
+
+        return
+
+    confirmed = False
+
+    if "|" in raw_text:
+
+        name_part, confirmation_part = (
+            raw_text.rsplit(
+                "|",
+                maxsplit=1,
+            )
+        )
+
+        name = name_part.strip()
+
+        confirmed = (
+            confirmation_part.strip().lower()
+            == "confirm"
+        )
+
+    else:
+
+        name = raw_text.strip()
+
+    newcomer = find_newcomer(
+        name
+    )
+
+    if newcomer is None:
+
+        await message.reply_text(
+            "❌ NEWCOMER NOT FOUND\n\n"
+            f"No newcomer record was found for:\n{name}"
+        )
+
+        return
+
+    if not confirmed:
+
+        restore_text = (
+            "📦 1 pack will be restored to inventory."
+            if newcomer.pack_given
+            else "📦 No stock adjustment will be made."
+        )
+
+        await message.reply_text(
+            "⚠️ REMOVE NEWCOMER?\n\n"
+            f"{format_newcomer_record(newcomer)}\n\n"
+            f"{restore_text}\n\n"
+            "This should only be used for an incorrect "
+            "or test registration.\n\n"
+            "To confirm, send:\n\n"
+            f"/removenewcomer "
+            f"{newcomer.display_name} | confirm"
+        )
+
+        return
+
+    (
+        status,
+        removed_name,
+        pack_restored,
+        inventory,
+    ) = remove_newcomer(
+        name
+    )
+
+    if status != "removed":
+
+        await message.reply_text(
+            "❌ The newcomer could not be removed."
+        )
+
+        return
+
+    lines = [
+        "✅ NEWCOMER REMOVED",
+        "",
+        f"👋 {removed_name}",
+        "",
+    ]
+
+    if pack_restored:
+
+        lines.append(
+            "📦 Newcomer pack restored to inventory."
+        )
+
+        if inventory is not None:
+
+            lines.append(
+                f"📦 Current stock: "
+                f"{inventory.current_stock}"
+            )
+
+    else:
+
+        lines.append(
+            "📦 No pack was restored."
+        )
+
+    lines.extend(
+        [
+            "",
+            "📝 If this person was already added to the "
+            "CARE Newcomer Master Sheet by mistake, "
+            "remember to correct the Master Sheet too.",
+        ]
+    )
+
+    await message.reply_text(
+        "\n".join(
+            lines
+        )
+    )
+
+
+# =========================================================
 # REGISTER HANDLERS
 # =========================================================
 
@@ -615,5 +752,12 @@ def register_care_newcomer_handlers(
         CommandHandler(
             "givepack",
             give_pack_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "removenewcomer",
+            remove_newcomer_command,
         )
     )

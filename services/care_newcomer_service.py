@@ -99,12 +99,7 @@ def set_newcomer_stock(
     year: int,
     quantity: int,
 ) -> CareNewcomerInventory:
-    """
-    Set physical newcomer-pack stock.
-
-    Useful when Dobby's starting quantity needs to be
-    matched to the team's real physical stock.
-    """
+    """Set the current physical newcomer-pack stock."""
 
     if quantity < 0:
         raise ValueError(
@@ -488,16 +483,7 @@ def give_pack_to_newcomer(
     CareNewcomer | None,
     CareNewcomerInventory,
 ]:
-    """
-    Give a pack to a registered newcomer who did not
-    receive one previously.
-
-    Status values:
-    - given
-    - already_given
-    - no_stock
-    - not_found
-    """
+    """Give a pack to a registered newcomer later."""
 
     newcomer = find_newcomer(
         display_name
@@ -582,6 +568,110 @@ def give_pack_to_newcomer(
             "given",
             stored_newcomer,
             stored_inventory,
+        )
+
+
+# =========================================================
+# REMOVE / UNDO NEWCOMER
+# =========================================================
+
+def remove_newcomer(
+    display_name: str,
+) -> tuple[
+    str,
+    str | None,
+    bool,
+    CareNewcomerInventory | None,
+]:
+    """
+    Remove a newcomer entered by mistake.
+
+    If the newcomer received a pack:
+    - restore +1 to stock
+    - reduce packs_given by 1
+
+    Returns:
+    status,
+    newcomer name,
+    pack restored,
+    inventory
+    """
+
+    newcomer = find_newcomer(
+        display_name
+    )
+
+    if newcomer is None:
+
+        return (
+            "not_found",
+            None,
+            False,
+            None,
+        )
+
+    newcomer_id = newcomer.id
+    newcomer_name = newcomer.display_name
+    visit_year = newcomer.first_visit_date.year
+    pack_was_given = newcomer.pack_given
+
+    with SessionLocal() as session:
+
+        stored_newcomer = session.get(
+            CareNewcomer,
+            newcomer_id,
+        )
+
+        if stored_newcomer is None:
+
+            return (
+                "not_found",
+                None,
+                False,
+                None,
+            )
+
+        inventory = session.scalar(
+            select(
+                CareNewcomerInventory
+            ).where(
+                CareNewcomerInventory.year
+                == visit_year
+            )
+        )
+
+        pack_restored = False
+
+        if (
+            pack_was_given
+            and inventory is not None
+        ):
+
+            inventory.current_stock += 1
+
+            if inventory.packs_given > 0:
+                inventory.packs_given -= 1
+
+            inventory.updated_at = datetime.now()
+
+            pack_restored = True
+
+        session.delete(
+            stored_newcomer
+        )
+
+        session.commit()
+
+        if inventory is not None:
+            session.refresh(
+                inventory
+            )
+
+        return (
+            "removed",
+            newcomer_name,
+            pack_restored,
+            inventory,
         )
 
 
