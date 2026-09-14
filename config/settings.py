@@ -144,7 +144,6 @@ BIRTHDAY_SCHEDULER_ENABLED = read_boolean(
     default=False,
 )
 
-
 BIRTHDAY_PLANNING_CHAT_ID = read_optional_int(
     "BIRTHDAY_PLANNING_CHAT_ID"
 )
@@ -260,5 +259,23 @@ CARE_NEWCOMER_TOPIC_ID = read_optional_int(
 
 CARE_NEWCOMER_SCHEDULER_ENABLED = read_boolean(
     "CARE_NEWCOMER_SCHEDULER_ENABLED",
+    default=False,
+)
+
+
+# ---------------------------------------------------------
+# CARE MILESTONES
+# ---------------------------------------------------------
+
+CARE_MILESTONE_CHAT_ID = read_optional_int(
+    "CARE_MILESTONE_CHAT_ID"
+)
+
+CARE_MILESTONE_TOPIC_ID = read_optional_int(
+    "CARE_MILESTONE_TOPIC_ID"
+)
+
+CARE_MILESTONE_SCHEDULER_ENABLED = read_boolean(
+    "CARE_MILESTONE_SCHEDULER_ENABLED",
     default=False,
 )

@@ -33,10 +33,18 @@ from modules.events import (
 )
 from modules.members import list_members_command
 from modules.sunday import run_sunday_check_command
+from services.care_milestone_service import (
+    format_active_milestones,
+    format_milestone_annual_plan,
+    format_milestone_history,
+    format_month_milestones,
+    format_year_milestones,
+    get_singapore_today as get_milestone_today,
+)
 from services.care_newcomer_service import (
     format_newcomer_inventory,
     format_newcomer_register,
-    get_singapore_today,
+    get_singapore_today as get_newcomer_today,
 )
 from services.permissions import is_approved_leader
 
@@ -75,6 +83,11 @@ CARE_NEWCOMER_PANEL_TEXT = (
     "Manage newcomer registration and newcomer-pack stock."
 )
 
+CARE_MILESTONE_PANEL_TEXT = (
+    "🏆 CARE — MILESTONES\n\n"
+    "Manage milestone celebrations, gifts and cards."
+)
+
 
 # ---------------------------------------------------------
 # ACCESS
@@ -104,6 +117,7 @@ def build_workspace_menu(
     keyboard = []
 
     if is_approved_leader(user_id):
+
         keyboard.append(
             [
                 InlineKeyboardButton(
@@ -114,6 +128,7 @@ def build_workspace_menu(
         )
 
     if is_events_leader(user_id):
+
         keyboard.append(
             [
                 InlineKeyboardButton(
@@ -124,6 +139,7 @@ def build_workspace_menu(
         )
 
     if is_care_leader(user_id):
+
         keyboard.append(
             [
                 InlineKeyboardButton(
@@ -293,7 +309,7 @@ def build_events_back_menu() -> InlineKeyboardMarkup:
 # ---------------------------------------------------------
 
 def build_care_menu() -> InlineKeyboardMarkup:
-    """Create the CARE Team faction menu."""
+    """Create CARE faction menu."""
 
     keyboard = [
         [
@@ -309,7 +325,7 @@ def build_care_menu() -> InlineKeyboardMarkup:
             ),
             InlineKeyboardButton(
                 "🏆 Milestones",
-                callback_data="panel:care:comingsoon:milestones",
+                callback_data="panel:care:milestones",
             ),
         ],
         [
@@ -340,7 +356,7 @@ def build_care_menu() -> InlineKeyboardMarkup:
 # ---------------------------------------------------------
 
 def build_care_birthday_menu() -> InlineKeyboardMarkup:
-    """Create the CARE Birthday control panel."""
+    """Create CARE Birthday control panel."""
 
     keyboard = [
         [
@@ -389,7 +405,7 @@ def build_care_birthday_menu() -> InlineKeyboardMarkup:
 
 
 def build_care_birthday_back_menu() -> InlineKeyboardMarkup:
-    """Create a back button for CARE Birthday."""
+    """Create Birthday back button."""
 
     return InlineKeyboardMarkup(
         [
@@ -408,7 +424,7 @@ def build_care_birthday_back_menu() -> InlineKeyboardMarkup:
 # ---------------------------------------------------------
 
 def build_care_newcomer_menu() -> InlineKeyboardMarkup:
-    """Create the CARE Newcomer control panel."""
+    """Create CARE Newcomer control panel."""
 
     keyboard = [
         [
@@ -451,6 +467,18 @@ def build_care_newcomer_menu() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
+                "↩️ Remove Newcomer",
+                callback_data="panel:care:newcomer:remove",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🎁 Annual Pack Prep",
+                callback_data="panel:care:newcomer:annual",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 "⬅️ Back to CARE",
                 callback_data="panel:workspace:care",
             ),
@@ -467,7 +495,7 @@ def build_care_newcomer_menu() -> InlineKeyboardMarkup:
 
 
 def build_care_newcomer_back_menu() -> InlineKeyboardMarkup:
-    """Create a back button for CARE Newcomers."""
+    """Create Newcomer back button."""
 
     return InlineKeyboardMarkup(
         [
@@ -482,25 +510,65 @@ def build_care_newcomer_back_menu() -> InlineKeyboardMarkup:
 
 
 # ---------------------------------------------------------
-# UNITE CONFIRMATION
+# CARE MILESTONE MENU
 # ---------------------------------------------------------
 
-def build_confirmation_menu(
-    action_name: str,
-) -> InlineKeyboardMarkup:
-    """Create confirmation buttons for UNITE actions."""
+def build_care_milestone_menu() -> InlineKeyboardMarkup:
+    """Create CARE Milestone control panel."""
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "✅ Confirm",
-                callback_data=f"panel:run:{action_name}",
+                "➕ Add Milestone",
+                callback_data="panel:care:milestone:add",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📋 Active Milestones",
+                callback_data="panel:care:milestone:active",
             ),
             InlineKeyboardButton(
-                "⬅️ Back",
-                callback_data="panel:workspace:unite",
+                "📅 This Month",
+                callback_data="panel:care:milestone:month",
             ),
-        ]
+        ],
+        [
+            InlineKeyboardButton(
+                "🗓 Year Tracker",
+                callback_data="panel:care:milestone:year",
+            ),
+            InlineKeyboardButton(
+                "🎁 Annual Planning",
+                callback_data="panel:care:milestone:plan",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "✏️ Update Date",
+                callback_data="panel:care:milestone:updatedate",
+            ),
+            InlineKeyboardButton(
+                "📚 History",
+                callback_data="panel:care:milestone:history",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ Cancel Milestone",
+                callback_data="panel:care:milestone:cancel",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Back to CARE",
+                callback_data="panel:workspace:care",
+            ),
+            InlineKeyboardButton(
+                "❌ Close",
+                callback_data="panel:close",
+            ),
+        ],
     ]
 
     return InlineKeyboardMarkup(
@@ -508,17 +576,56 @@ def build_confirmation_menu(
     )
 
 
+def build_care_milestone_back_menu() -> InlineKeyboardMarkup:
+    """Create Milestone back button."""
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "⬅️ Back to Milestones",
+                    callback_data="panel:care:milestones",
+                )
+            ]
+        ]
+    )
+
+
+# ---------------------------------------------------------
+# UNITE CONFIRMATION
+# ---------------------------------------------------------
+
+def build_confirmation_menu(
+    action_name: str,
+) -> InlineKeyboardMarkup:
+    """Create UNITE confirmation buttons."""
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "✅ Confirm",
+                    callback_data=f"panel:run:{action_name}",
+                ),
+                InlineKeyboardButton(
+                    "⬅️ Back",
+                    callback_data="panel:workspace:unite",
+                ),
+            ]
+        ]
+    )
+
+
 def get_confirmation_text(
     action_name: str,
 ) -> str:
-    """Return confirmation text for a UNITE action."""
+    """Return UNITE confirmation text."""
 
-    confirmation_messages = {
+    messages = {
         "sunday": (
             "⛪ SEND SUNDAY POLL\n\n"
             "Are you sure you want Dobby to send "
-            "the Sunday attendance poll now?\n\n"
-            "A poll may be sent to the UNITE group."
+            "the Sunday attendance poll now?"
         ),
         "biweekly": (
             "🏠 RUN BI-WEEKLY CHECK\n\n"
@@ -528,9 +635,7 @@ def get_confirmation_text(
         "birthday": (
             "🎂 RUN BIRTHDAY CHECK\n\n"
             "Are you sure you want Dobby to check "
-            "for today's birthdays?\n\n"
-            "A birthday greeting may be sent "
-            "to the UNITE group."
+            "for today's birthdays?"
         ),
         "planning": (
             "🎁 RUN PLANNING CHECK\n\n"
@@ -539,9 +644,9 @@ def get_confirmation_text(
         ),
     }
 
-    return confirmation_messages.get(
+    return messages.get(
         action_name,
-        "Are you sure you want to run this action?",
+        "Are you sure?",
     )
 
 
@@ -553,7 +658,7 @@ async def menu_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Open Dobby's control panel."""
+    """Open Dobby control panel."""
 
     message = update.effective_message
     user = update.effective_user
@@ -570,10 +675,12 @@ async def menu_command(
     if not has_any_panel_access(
         user_id
     ):
+
         await message.reply_text(
             "⛔ This control panel is only available "
             "to approved leaders."
         )
+
         return
 
     await message.reply_text(
@@ -585,7 +692,7 @@ async def menu_command(
 
 
 # ---------------------------------------------------------
-# RUN UNITE ACTION
+# UNITE ACTIONS
 # ---------------------------------------------------------
 
 async def run_unite_action(
@@ -593,7 +700,6 @@ async def run_unite_action(
     context: ContextTypes.DEFAULT_TYPE,
     action_name: str,
 ) -> None:
-    """Run a confirmed UNITE action."""
 
     query = update.callback_query
     user = update.effective_user
@@ -610,34 +716,27 @@ async def run_unite_action(
     if not is_approved_leader(
         user_id
     ):
-        await query.edit_message_text(
-            "⛔ You do not have permission "
-            "to manage UNITE."
-        )
         return
 
-    action_handlers = {
+    handlers = {
         "sunday": run_sunday_check_command,
         "biweekly": run_biweekly_check_command,
         "birthday": run_birthday_check_command,
         "planning": run_birthday_planning_check_command,
     }
 
-    action_handler = action_handlers.get(
+    handler = handlers.get(
         action_name
     )
 
-    if action_handler is None:
-        await query.edit_message_text(
-            "❌ That action could not be found."
-        )
+    if handler is None:
         return
 
     await query.edit_message_text(
         "⏳ Dobby is running the requested action..."
     )
 
-    await action_handler(
+    await handler(
         update,
         context,
     )
@@ -648,16 +747,11 @@ async def run_unite_action(
     )
 
 
-# ---------------------------------------------------------
-# DISPLAY UNITE INFORMATION
-# ---------------------------------------------------------
-
 async def run_unite_display_action(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     action_name: str,
 ) -> None:
-    """Run a UNITE information action."""
 
     query = update.callback_query
     user = update.effective_user
@@ -671,17 +765,7 @@ async def run_unite_display_action(
         else None
     )
 
-    if (
-        action_name != "myid"
-        and not is_approved_leader(user_id)
-    ):
-        await query.edit_message_text(
-            "⛔ You do not have permission "
-            "to manage UNITE."
-        )
-        return
-
-    action_handlers = {
+    handlers = {
         "biweekly": list_biweekly_command,
         "members": list_members_command,
         "chatid": chat_id,
@@ -689,29 +773,29 @@ async def run_unite_display_action(
         "myid": my_id,
     }
 
-    action_handler = action_handlers.get(
+    handler = handlers.get(
         action_name
     )
 
-    if action_handler is None:
-        await query.edit_message_text(
-            "❌ That option could not be found."
-        )
+    if handler is None:
         return
 
-    await action_handler(
+    await handler(
         update,
         context,
     )
 
     if action_name == "myid":
+
         await query.edit_message_text(
             CONTROL_PANEL_TEXT,
             reply_markup=build_workspace_menu(
                 user_id
             ),
         )
+
     else:
+
         await query.edit_message_text(
             UNITE_PANEL_TEXT,
             reply_markup=build_unite_menu(),
@@ -726,7 +810,6 @@ async def show_events_schedule(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Show Events Team schedule."""
 
     query = update.callback_query
     user = update.effective_user
@@ -743,10 +826,6 @@ async def show_events_schedule(
     if not is_events_leader(
         user_id
     ):
-        await query.edit_message_text(
-            "⛔ You do not have permission "
-            "to manage Events Team."
-        )
         return
 
     await events_schedule_command(
@@ -768,7 +847,7 @@ async def handle_control_panel_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Handle all Dobby control-panel buttons."""
+    """Handle Dobby panel buttons."""
 
     query = update.callback_query
     user = update.effective_user
@@ -787,10 +866,12 @@ async def handle_control_panel_callback(
     if not has_any_panel_access(
         user_id
     ):
+
         await query.edit_message_text(
             "⛔ This control panel is only available "
             "to approved leaders."
         )
+
         return
 
     callback_data = (
@@ -803,19 +884,23 @@ async def handle_control_panel_callback(
     # -----------------------------------------------------
 
     if callback_data == "panel:open":
+
         await query.edit_message_text(
             CONTROL_PANEL_TEXT,
             reply_markup=build_workspace_menu(
                 user_id
             ),
         )
+
         return
 
     if callback_data == "panel:close":
+
         await query.edit_message_text(
             "✅ Dobby's control panel has been closed.\n\n"
             "Send /menu to open it again."
         )
+
         return
 
     # -----------------------------------------------------
@@ -827,16 +912,13 @@ async def handle_control_panel_callback(
         if not is_approved_leader(
             user_id
         ):
-            await query.edit_message_text(
-                "⛔ You do not have permission "
-                "to manage UNITE."
-            )
             return
 
         await query.edit_message_text(
             UNITE_PANEL_TEXT,
             reply_markup=build_unite_menu(),
         )
+
         return
 
     # -----------------------------------------------------
@@ -848,16 +930,13 @@ async def handle_control_panel_callback(
         if not is_events_leader(
             user_id
         ):
-            await query.edit_message_text(
-                "⛔ You do not have permission "
-                "to manage Events Team."
-            )
             return
 
         await query.edit_message_text(
             EVENTS_PANEL_TEXT,
             reply_markup=build_events_menu(),
         )
+
         return
 
     # -----------------------------------------------------
@@ -869,21 +948,18 @@ async def handle_control_panel_callback(
         if not is_care_leader(
             user_id
         ):
-            await query.edit_message_text(
-                "⛔ You do not have permission "
-                "to manage CARE Team."
-            )
             return
 
         await query.edit_message_text(
             CARE_PANEL_TEXT,
             reply_markup=build_care_menu(),
         )
+
         return
 
-    # -----------------------------------------------------
-    # CARE — BIRTHDAYS
-    # -----------------------------------------------------
+    # =====================================================
+    # CARE BIRTHDAYS
+    # =====================================================
 
     if callback_data == "panel:care:birthdays":
 
@@ -896,44 +972,23 @@ async def handle_control_panel_callback(
             CARE_BIRTHDAY_PANEL_TEXT,
             reply_markup=build_care_birthday_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # CARE — VIEW BIRTHDAY MONTH
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:care:birthday:viewmonth":
 
-        if not is_care_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "📅 VIEW BIRTHDAY MONTH\n\n"
-            "Send:\n\n"
+            "Send:\n"
             "/carebirthdaymonth MM-YYYY\n\n"
             "Example:\n"
-            "/carebirthdaymonth 10-2026\n\n"
-            "Dobby will show:\n"
-            "• All birthday celebrants\n"
-            "• Their birthday dates\n"
-            "• Number of celebrants\n"
-            "• First-Sunday celebration date",
+            "/carebirthdaymonth 10-2026",
             reply_markup=build_care_birthday_back_menu(),
         )
+
         return
 
-    # -----------------------------------------------------
-    # CARE — SYNC BIRTHDAY ROSTER
-    # -----------------------------------------------------
-
     if callback_data == "panel:care:birthday:sync":
-
-        if not is_care_leader(
-            user_id
-        ):
-            return
 
         await query.edit_message_text(
             "⏳ Syncing CARE Birthday roster..."
@@ -948,121 +1003,72 @@ async def handle_control_panel_callback(
             CARE_BIRTHDAY_PANEL_TEXT,
             reply_markup=build_care_birthday_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # CARE — COMING SOON BIRTHDAY FEATURES
-    # -----------------------------------------------------
+        return
 
     if callback_data.startswith(
         "panel:care:birthday:comingsoon:"
     ):
 
         await query.edit_message_text(
-            "🚧 This CARE Birthday feature "
-            "is being built next.\n\n"
-            "The birthday roster and monthly "
-            "celebrant view are already working.",
+            "🚧 This Birthday option is managed by "
+            "the CARE Birthday workflow.",
             reply_markup=build_care_birthday_back_menu(),
         )
+
         return
 
-    # -----------------------------------------------------
-    # CARE — NEWCOMERS
-    # -----------------------------------------------------
+    # =====================================================
+    # CARE NEWCOMERS
+    # =====================================================
 
     if callback_data == "panel:care:newcomers":
-
-        if not is_care_leader(
-            user_id
-        ):
-            return
 
         await query.edit_message_text(
             CARE_NEWCOMER_PANEL_TEXT,
             reply_markup=build_care_newcomer_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # CARE — REGISTER NEWCOMER
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:care:newcomer:add":
 
-        if not is_care_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "➕ REGISTER NEWCOMER\n\n"
-            "Send:\n\n"
+            "Send:\n"
             "/addnewcomer NAME | INVITED BY\n\n"
             "Example:\n"
-            "/addnewcomer John Tan | Gordon\n\n"
-            "Dobby will:\n"
-            "• Check whether the person is already registered\n"
-            "• Record their first visit\n"
-            "• Mark one newcomer pack as given\n"
-            "• Deduct one pack from inventory\n"
-            "• Remind you to add the name to the Master Sheet",
+            "/addnewcomer John Tan | Gordon",
             reply_markup=build_care_newcomer_back_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # CARE — FIND NEWCOMER
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:care:newcomer:find":
 
-        if not is_care_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "🔎 FIND NEWCOMER\n\n"
-            "Send:\n\n"
-            "/findnewcomer NAME\n\n"
-            "Example:\n"
-            "/findnewcomer John Tan\n\n"
-            "Use this before giving a pack if you are unsure "
-            "whether someone has received one before.",
+            "Send:\n"
+            "/findnewcomer NAME",
             reply_markup=build_care_newcomer_back_menu(),
         )
+
         return
 
-    # -----------------------------------------------------
-    # CARE — NEWCOMER REGISTER
-    # -----------------------------------------------------
-
     if callback_data == "panel:care:newcomer:register":
-
-        if not is_care_leader(
-            user_id
-        ):
-            return
 
         await query.edit_message_text(
             format_newcomer_register(),
             reply_markup=build_care_newcomer_back_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # CARE — PACK INVENTORY
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:care:newcomer:stock":
 
-        if not is_care_leader(
-            user_id
-        ):
-            return
-
-        year = get_singapore_today().year
+        year = (
+            get_newcomer_today().year
+        )
 
         await query.edit_message_text(
             format_newcomer_inventory(
@@ -1070,109 +1076,268 @@ async def handle_control_panel_callback(
             ),
             reply_markup=build_care_newcomer_back_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # CARE — SET PHYSICAL STOCK
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:care:newcomer:setstock":
 
-        if not is_care_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "🧮 SET PHYSICAL STOCK\n\n"
-            "Use this when Dobby's stock count needs to be "
-            "matched to the real number of packs on hand.\n\n"
-            "Send:\n\n"
+            "Send:\n"
             "/setnewcomerstock QUANTITY [YEAR]\n\n"
             "Example:\n"
             "/setnewcomerstock 34",
             reply_markup=build_care_newcomer_back_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # CARE — ADD REPLENISHED STOCK
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:care:newcomer:addstock":
 
-        if not is_care_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
-            "➕ ADD REPLENISHED STOCK\n\n"
-            "Use this after additional newcomer packs have "
-            "been prepared.\n\n"
-            "Send:\n\n"
+            "➕ ADD REPLENISHMENT\n\n"
+            "Send:\n"
             "/addnewcomerstock QUANTITY [YEAR]\n\n"
             "Example:\n"
             "/addnewcomerstock 20",
             reply_markup=build_care_newcomer_back_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # CARE — GIVE OUTSTANDING PACK
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:care:newcomer:givepack":
 
-        if not is_care_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "🎁 GIVE OUTSTANDING PACK\n\n"
-            "Use this if a newcomer was registered when "
-            "there were no packs available, and receives "
-            "their pack later.\n\n"
-            "Send:\n\n"
-            "/givepack NAME\n\n"
-            "Example:\n"
-            "/givepack John Tan",
+            "Send:\n"
+            "/givepack NAME",
             reply_markup=build_care_newcomer_back_menu(),
         )
+
+        return
+
+    if callback_data == "panel:care:newcomer:remove":
+
+        await query.edit_message_text(
+            "↩️ REMOVE NEWCOMER\n\n"
+            "Use this only for an incorrect or test entry.\n\n"
+            "Send:\n"
+            "/removenewcomer NAME\n\n"
+            "Dobby will ask for confirmation before removing.",
+            reply_markup=build_care_newcomer_back_menu(),
+        )
+
+        return
+
+    if callback_data == "panel:care:newcomer:annual":
+
+        target_year = (
+            get_newcomer_today().year + 1
+        )
+
+        await query.edit_message_text(
+            "🎁 ANNUAL NEWCOMER PACK PREP\n\n"
+            f"Current preparation year: {target_year}\n\n"
+            "Send:\n"
+            f"/carenewcomerprep {target_year}\n\n"
+            "This opens the interactive 50-pack "
+            "preparation checklist.",
+            reply_markup=build_care_newcomer_back_menu(),
+        )
+
+        return
+
+    # =====================================================
+    # CARE MILESTONES
+    # =====================================================
+
+    if callback_data == "panel:care:milestones":
+
+        await query.edit_message_text(
+            CARE_MILESTONE_PANEL_TEXT,
+            reply_markup=build_care_milestone_menu(),
+        )
+
         return
 
     # -----------------------------------------------------
-    # CARE — OTHER FACTIONS
+    # ADD MILESTONE
     # -----------------------------------------------------
+
+    if callback_data == "panel:care:milestone:add":
+
+        await query.edit_message_text(
+            "➕ ADD MILESTONE\n\n"
+            "Send:\n\n"
+            "/addmilestone NAME | TYPE | DATE\n\n"
+            "Exact date example:\n"
+            "/addmilestone John Tan | university | "
+            "18-05-2027\n\n"
+            "Month-only example:\n"
+            "/addmilestone John Tan | university | "
+            "05-2027\n\n"
+            "Types:\n"
+            "🎓 secondary\n"
+            "🎓 polytechnic\n"
+            "🎓 jc\n"
+            "🎓 university\n"
+            "✝️ baptism\n"
+            "🪖 ord",
+            reply_markup=build_care_milestone_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # ACTIVE MILESTONES
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:milestone:active":
+
+        await query.edit_message_text(
+            format_active_milestones(),
+            reply_markup=build_care_milestone_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # THIS MONTH
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:milestone:month":
+
+        today = get_milestone_today()
+
+        await query.edit_message_text(
+            format_month_milestones(
+                today.year,
+                today.month,
+            ),
+            reply_markup=build_care_milestone_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # YEAR TRACKER
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:milestone:year":
+
+        today = get_milestone_today()
+
+        await query.edit_message_text(
+            format_year_milestones(
+                today.year
+            ),
+            reply_markup=build_care_milestone_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # ANNUAL PLANNING
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:milestone:plan":
+
+        today = get_milestone_today()
+
+        target_year = (
+            today.year + 1
+        )
+
+        await query.edit_message_text(
+            format_milestone_annual_plan(
+                target_year
+            )
+            + "\n\n"
+            "To open the interactive lookout checklist:\n"
+            f"/milestoneplan {target_year}\n\n"
+            "To decide a gift:\n"
+            "/setmilestonegift YEAR | TYPE | GIFT\n\n"
+            "Example:\n"
+            f"/setmilestonegift {target_year} | baptism | "
+            "Personalised Bible",
+            reply_markup=build_care_milestone_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # UPDATE DATE
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:milestone:updatedate":
+
+        await query.edit_message_text(
+            "✏️ UPDATE MILESTONE DATE\n\n"
+            "Use this when you initially only knew "
+            "the month and later receive the exact date.\n\n"
+            "Send:\n"
+            "/updatemilestonedate ID | DD-MM-YYYY\n\n"
+            "Example:\n"
+            "/updatemilestonedate 3 | 18-05-2027\n\n"
+            "Once the exact date is added, Dobby can "
+            "calculate the 2-week reminder.",
+            reply_markup=build_care_milestone_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # HISTORY
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:milestone:history":
+
+        today = get_milestone_today()
+
+        await query.edit_message_text(
+            format_milestone_history(
+                today.year
+            ),
+            reply_markup=build_care_milestone_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # CANCEL MILESTONE
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:milestone:cancel":
+
+        await query.edit_message_text(
+            "❌ CANCEL MILESTONE\n\n"
+            "First check the milestone ID using:\n"
+            "/activemilestones\n\n"
+            "Then send:\n"
+            "/cancelmilestone ID confirm\n\n"
+            "Example:\n"
+            "/cancelmilestone 3 confirm",
+            reply_markup=build_care_milestone_back_menu(),
+        )
+
+        return
+
+    # =====================================================
+    # CARE — ENCOURAGEMENT
+    # =====================================================
 
     if callback_data.startswith(
         "panel:care:comingsoon:"
     ):
 
-        faction = callback_data.split(
-            ":"
-        )[-1]
-
-        names = {
-            "milestones": "🏆 Milestones",
-            "encouragement": "💌 Encouragement",
-        }
-
-        faction_name = names.get(
-            faction,
-            "CARE faction",
-        )
-
         await query.edit_message_text(
-            f"{faction_name}\n\n"
-            "🚧 This CARE workflow has not been "
-            "built yet.\n\n"
-            "Completed workflows:\n"
-            "🎂 Birthdays\n"
-            "👋 Newcomers\n\n"
-            "Coming next:\n"
-            "🏆 Milestones\n"
+            "💌 ENCOURAGEMENT\n\n"
+            "🚧 This CARE workflow has not been built yet.\n\n"
+            "Completed:\n"
+            "✅ Birthdays\n"
+            "✅ Newcomers\n"
+            "✅ Milestones\n\n"
+            "Next:\n"
             "💌 Encouragement",
             reply_markup=InlineKeyboardMarkup(
                 [
@@ -1185,20 +1350,16 @@ async def handle_control_panel_callback(
                 ]
             ),
         )
+
         return
 
-    # -----------------------------------------------------
+    # =====================================================
     # UNITE CONFIRMATIONS
-    # -----------------------------------------------------
+    # =====================================================
 
     if callback_data.startswith(
         "panel:confirm:"
     ):
-
-        if not is_approved_leader(
-            user_id
-        ):
-            return
 
         action_name = callback_data.split(
             ":",
@@ -1213,6 +1374,7 @@ async def handle_control_panel_callback(
                 action_name
             ),
         )
+
         return
 
     if callback_data.startswith(
@@ -1229,6 +1391,7 @@ async def handle_control_panel_callback(
             context,
             action_name,
         )
+
         return
 
     if callback_data.startswith(
@@ -1245,11 +1408,12 @@ async def handle_control_panel_callback(
             context,
             action_name,
         )
+
         return
 
-    # -----------------------------------------------------
-    # EVENTS — VIEW SCHEDULE
-    # -----------------------------------------------------
+    # =====================================================
+    # EVENTS
+    # =====================================================
 
     if callback_data == "panel:events:schedule":
 
@@ -1257,121 +1421,62 @@ async def handle_control_panel_callback(
             update,
             context,
         )
-        return
 
-    # -----------------------------------------------------
-    # EVENTS — ADD MEETING
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:events:addmeeting":
 
-        if not is_events_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "➕ ADD EVENTS MEETING\n\n"
-            "Send:\n\n"
-            "/addeventmeeting DD-MM-YYYY HH:MM | Meeting Name\n\n"
-            "Example:\n"
-            "/addeventmeeting 15-09-2026 20:00 | "
-            "September Events Meeting\n\n"
-            "🔔 Automatic reminders:\n"
-            "• 1 week before at 10:00 AM\n"
-            "• 1 day before at 10:00 AM",
+            "Send:\n"
+            "/addeventmeeting DD-MM-YYYY HH:MM | Meeting Name",
             reply_markup=build_events_back_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # EVENTS — ADD DEADLINE
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:events:adddeadline":
 
-        if not is_events_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "➕ ADD EVENTS DEADLINE\n\n"
-            "Send:\n\n"
-            "/addeventdeadline DD-MM-YYYY | Deadline Name\n\n"
-            "Example:\n"
-            "/addeventdeadline 25-09-2026 | "
-            "Finalise Event Proposal\n\n"
-            "🔔 Automatic reminders:\n"
-            "• 3 days before at 10:00 AM\n"
-            "• Deadline day at 10:00 AM",
+            "Send:\n"
+            "/addeventdeadline DD-MM-YYYY | Deadline Name",
             reply_markup=build_events_back_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # EVENTS — REMINDER
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:events:reminder":
 
-        if not is_events_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "🔔 SEND MEETING REMINDER\n\n"
-            "First check 📋 View Schedule.\n\n"
-            "Then send:\n\n"
-            "/sendeventreminder ID\n\n"
-            "Example:\n"
-            "/sendeventreminder 3\n\n"
-            "This does not affect automatic reminders.",
+            "Send:\n"
+            "/sendeventreminder ID",
             reply_markup=build_events_back_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # EVENTS — COMPLETE
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:events:complete":
 
-        if not is_events_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "✅ COMPLETE DEADLINE\n\n"
-            "Send:\n\n"
-            "/completeevent ID\n\n"
-            "Example:\n"
-            "/completeevent 2",
+            "Send:\n"
+            "/completeevent ID",
             reply_markup=build_events_back_menu(),
         )
-        return
 
-    # -----------------------------------------------------
-    # EVENTS — CANCEL
-    # -----------------------------------------------------
+        return
 
     if callback_data == "panel:events:cancel":
 
-        if not is_events_leader(
-            user_id
-        ):
-            return
-
         await query.edit_message_text(
             "❌ CANCEL EVENTS ITEM\n\n"
-            "Send:\n\n"
-            "/cancelevent ID\n\n"
-            "Example:\n"
-            "/cancelevent 3",
+            "Send:\n"
+            "/cancelevent ID",
             reply_markup=build_events_back_menu(),
         )
+
         return
 
     # -----------------------------------------------------
@@ -1393,7 +1498,7 @@ async def handle_control_panel_callback(
 def register_control_panel_handlers(
     application: Application,
 ) -> None:
-    """Register Dobby's control-panel handlers."""
+    """Register Dobby control panel."""
 
     application.add_handler(
         CommandHandler(
