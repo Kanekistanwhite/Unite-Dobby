@@ -26,22 +26,28 @@ from config.settings import (
     CARE_LEADER_USER_IDS,
 )
 from services.care_birthday_service import (
+    CARE_ANNUAL_GIFT_CHECKLIST,
     CARE_BIRTHDAY_ALL_CHECKLIST,
     CARE_BIRTHDAY_PREP_CHECKLIST,
-    CARE_BIRTHDAY_WORKFLOW_CHECKLIST,
+    annual_reminder_was_sent,
+    build_annual_prep_reminder_text,
+    format_care_annual_prep,
     format_care_birthday_batch,
     format_care_birthday_month,
     format_celebrant_list,
-    get_care_birthdays_for_month,
+    get_current_annual_prep_year,
     get_current_care_birthday_period,
     get_first_sunday,
     get_incomplete_preparation_items,
     get_next_month,
+    get_or_create_care_annual_prep,
     get_or_create_care_birthday_batch,
     get_singapore_now,
     has_care_birthday_reminder_been_sent,
+    mark_annual_reminder_sent,
     record_care_birthday_reminder_sent,
     seed_care_birthday_roster,
+    toggle_care_annual_prep_item,
     toggle_care_birthday_checklist_item,
 )
 
@@ -54,6 +60,10 @@ SINGAPORE_TIMEZONE = ZoneInfo(
     "Asia/Singapore"
 )
 
+
+# =========================================================
+# PERMISSIONS
+# =========================================================
 
 def is_care_leader(
     user_id: int | None,
@@ -90,16 +100,21 @@ async def check_care_permission(
             "⛔ This command is only available "
             "to approved CARE Team leaders."
         )
+
         return False
 
     return True
 
 
+# =========================================================
+# MONTHLY BIRTHDAY BUTTONS
+# =========================================================
+
 def build_batch_view_keyboard(
     year: int,
     month: int,
 ) -> InlineKeyboardMarkup:
-    """Buttons underneath batch summary."""
+    """Buttons underneath birthday batch summary."""
 
     return InlineKeyboardMarkup(
         [
@@ -109,6 +124,15 @@ def build_batch_view_keyboard(
                     callback_data=(
                         f"carebirthday:checklist:"
                         f"{year}:{month}"
+                    ),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🎁 Annual Gift Prep",
+                    callback_data=(
+                        "carebirthday:annual:"
+                        f"{get_current_annual_prep_year()}"
                     ),
                 )
             ],
@@ -126,7 +150,7 @@ def build_checklist_keyboard(
     year: int,
     month: int,
 ) -> InlineKeyboardMarkup:
-    """Interactive CARE Birthday checklist."""
+    """Interactive monthly CARE Birthday checklist."""
 
     batch = get_or_create_care_birthday_batch(
         year,
@@ -190,6 +214,15 @@ def build_checklist_keyboard(
             ],
             [
                 InlineKeyboardButton(
+                    "🎁 Annual Gift Prep",
+                    callback_data=(
+                        "carebirthday:annual:"
+                        f"{get_current_annual_prep_year()}"
+                    ),
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     "⬅️ Back to Birthdays",
                     callback_data="panel:care:birthdays",
                 )
@@ -201,6 +234,96 @@ def build_checklist_keyboard(
         keyboard
     )
 
+
+# =========================================================
+# ANNUAL GIFT PREP BUTTONS
+# =========================================================
+
+def build_annual_prep_keyboard(
+    target_year: int,
+) -> InlineKeyboardMarkup:
+    """Interactive Annual Gift Prep checklist."""
+
+    annual = get_or_create_care_annual_prep(
+        target_year
+    )
+
+    keyboard = []
+
+    button_labels = {
+        "gift": "🎁 Gift Finalised",
+        "quantity": "🔢 Quantity Confirmed",
+        "purchase_gifts": "🛒 Gifts Purchased",
+        "materials": "📦 Packing Materials Purchased",
+        "arrived": "📥 All Items Received",
+        "packed": "🎀 Gifts Packed",
+        "counted": "🔢 Gift Packs Counted",
+        "stock": "✅ Sufficient Stock Confirmed",
+    }
+
+    for (
+        item_key,
+        (
+            field_name,
+            label,
+        ),
+    ) in CARE_ANNUAL_GIFT_CHECKLIST.items():
+
+        completed = getattr(
+            annual,
+            field_name,
+        )
+
+        icon = (
+            "✅"
+            if completed
+            else "⬜"
+        )
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    f"{icon} {button_labels[item_key]}",
+                    callback_data=(
+                        "carebirthday:annualtoggle:"
+                        f"{target_year}:{item_key}"
+                    ),
+                )
+            ]
+        )
+
+    year, month = (
+        get_current_care_birthday_period()
+    )
+
+    keyboard.extend(
+        [
+            [
+                InlineKeyboardButton(
+                    "🎂 Monthly Birthday Batch",
+                    callback_data=(
+                        f"carebirthday:view:"
+                        f"{year}:{month}"
+                    ),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⬅️ Back to Birthdays",
+                    callback_data="panel:care:birthdays",
+                )
+            ],
+        ]
+    )
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+# =========================================================
+# PARSING
+# =========================================================
 
 def parse_month_year(
     value: str,
@@ -231,6 +354,10 @@ def parse_month_year(
         month,
     )
 
+
+# =========================================================
+# MONTHLY REMINDER TEXT
+# =========================================================
 
 def build_open_reminder(
     year: int,
@@ -318,7 +445,7 @@ def build_announcement_reminder(
     year: int,
     month: int,
 ) -> str:
-    """Build birthday-announcement reminder."""
+    """Build monthly birthday-announcement reminder."""
 
     return (
         f"📣 {month_name[month].upper()} "
@@ -344,6 +471,7 @@ def build_distribution_reminder(
             f"🔔 {month_name[month].upper()} "
             "BIRTHDAY DISTRIBUTION FOLLOW-UP"
         )
+
     else:
         heading = (
             f"📦 {month_name[month].upper()} "
@@ -364,6 +492,10 @@ def build_distribution_reminder(
     )
 
 
+# =========================================================
+# SEND MESSAGE
+# =========================================================
+
 async def send_care_birthday_message(
     context: ContextTypes.DEFAULT_TYPE,
     text: str,
@@ -374,6 +506,7 @@ async def send_care_birthday_message(
         logger.error(
             "CARE_BIRTHDAY_CHAT_ID is not configured."
         )
+
         return False
 
     kwargs = {}
@@ -400,6 +533,10 @@ async def send_care_birthday_message(
         return False
 
 
+# =========================================================
+# AUTOMATIC MONTHLY + ANNUAL REMINDERS
+# =========================================================
+
 async def send_due_care_birthday_reminders(
     context: ContextTypes.DEFAULT_TYPE,
 ) -> int:
@@ -410,9 +547,9 @@ async def send_due_care_birthday_reminders(
 
     sent_count = 0
 
-    # -----------------------------------------------------
-    # 1ST — BIRTHDAY ANNOUNCEMENT REMINDER
-    # -----------------------------------------------------
+    # =====================================================
+    # MONTHLY: 1ST — ANNOUNCEMENT REMINDER
+    # =====================================================
 
     if today.day == 1:
 
@@ -452,9 +589,9 @@ async def send_due_care_birthday_reminders(
 
                 sent_count += 1
 
-    # -----------------------------------------------------
-    # 2ND / 15TH / 25TH — NEXT MONTH PREPARATION
-    # -----------------------------------------------------
+    # =====================================================
+    # MONTHLY: 2ND / 15TH / 25TH
+    # =====================================================
 
     if today.day in {
         2,
@@ -473,6 +610,7 @@ async def send_due_care_birthday_reminders(
         )
 
         if today.day == 2:
+
             reminder_type = "open"
 
             text = build_open_reminder(
@@ -481,6 +619,7 @@ async def send_due_care_birthday_reminders(
             )
 
         elif today.day == 15:
+
             reminder_type = "midmonth"
 
             text = build_progress_reminder(
@@ -490,6 +629,7 @@ async def send_due_care_birthday_reminders(
             )
 
         else:
+
             reminder_type = "final"
 
             text = build_progress_reminder(
@@ -521,9 +661,9 @@ async def send_due_care_birthday_reminders(
 
                 sent_count += 1
 
-    # -----------------------------------------------------
-    # POST-CELEBRATION DISTRIBUTION
-    # -----------------------------------------------------
+    # =====================================================
+    # MONTHLY: POST-CELEBRATION DISTRIBUTION
+    # =====================================================
 
     year = today.year
     month = today.month
@@ -597,6 +737,133 @@ async def send_due_care_birthday_reminders(
 
                     sent_count += 1
 
+    # =====================================================
+    # ANNUAL GIFT PREP
+    # =====================================================
+
+    annual_target_year = (
+        today.year + 1
+    )
+
+    annual_heading = None
+    annual_flag = None
+    annual_full_checklist = False
+
+    # 1 NOVEMBER — OPEN ANNUAL PREP
+    if (
+        today.month == 11
+        and today.day == 1
+    ):
+
+        annual_heading = (
+            f"🎁 {annual_target_year} "
+            "ANNUAL BIRTHDAY GIFT PREP"
+        )
+
+        annual_flag = (
+            "open_reminder_sent"
+        )
+
+        annual_full_checklist = True
+
+    # 15 NOVEMBER — PROGRESS CHECK
+    elif (
+        today.month == 11
+        and today.day == 15
+    ):
+
+        annual_heading = (
+            f"🔔 {annual_target_year} "
+            "ANNUAL GIFT PREP PROGRESS CHECK"
+        )
+
+        annual_flag = (
+            "nov15_reminder_sent"
+        )
+
+    # 1 DECEMBER — PROGRESS CHECK
+    elif (
+        today.month == 12
+        and today.day == 1
+    ):
+
+        annual_heading = (
+            f"🔔 {annual_target_year} "
+            "ANNUAL GIFT PREP — DECEMBER CHECK"
+        )
+
+        annual_flag = (
+            "dec1_reminder_sent"
+        )
+
+    # 15 DECEMBER — FINAL PACKING CHECK
+    elif (
+        today.month == 12
+        and today.day == 15
+    ):
+
+        annual_heading = (
+            f"⚠️ {annual_target_year} "
+            "ANNUAL GIFT PREP — FINAL PACKING CHECK"
+        )
+
+        annual_flag = (
+            "dec15_reminder_sent"
+        )
+
+    # 25 DECEMBER — FINAL WARNING
+    elif (
+        today.month == 12
+        and today.day == 25
+    ):
+
+        annual_heading = (
+            f"🚨 {annual_target_year} "
+            "ANNUAL GIFT PREP — FINAL REMINDER"
+        )
+
+        annual_flag = (
+            "dec25_reminder_sent"
+        )
+
+    if (
+        annual_heading is not None
+        and annual_flag is not None
+    ):
+
+        already_sent = (
+            annual_reminder_was_sent(
+                annual_target_year,
+                annual_flag,
+            )
+        )
+
+        if not already_sent:
+
+            annual_text = (
+                build_annual_prep_reminder_text(
+                    annual_target_year,
+                    annual_heading,
+                    full_checklist=annual_full_checklist,
+                )
+            )
+
+            if annual_text is not None:
+
+                sent = await send_care_birthday_message(
+                    context,
+                    annual_text,
+                )
+
+                if sent:
+
+                    mark_annual_reminder_sent(
+                        annual_target_year,
+                        annual_flag,
+                    )
+
+                    sent_count += 1
+
     return sent_count
 
 
@@ -619,6 +886,10 @@ async def scheduled_care_birthday_job(
         sent_count,
     )
 
+
+# =========================================================
+# MONTHLY COMMANDS
+# =========================================================
 
 async def setup_care_birthdays_command(
     update: Update,
@@ -664,10 +935,12 @@ async def care_birthday_month_command(
         return
 
     if len(context.args) != 1:
+
         await message.reply_text(
             "Usage:\n"
             "/carebirthdaymonth MM-YYYY"
         )
+
         return
 
     try:
@@ -676,9 +949,11 @@ async def care_birthday_month_command(
         )
 
     except ValueError:
+
         await message.reply_text(
             "❌ Invalid month."
         )
+
         return
 
     await message.reply_text(
@@ -706,16 +981,22 @@ async def care_birthday_batch_command(
         return
 
     if context.args:
+
         try:
             year, month = parse_month_year(
                 context.args[0]
             )
+
         except ValueError:
+
             await message.reply_text(
                 "❌ Invalid month."
             )
+
             return
+
     else:
+
         year, month = (
             get_current_care_birthday_period()
         )
@@ -736,7 +1017,7 @@ async def care_birthday_checklist_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Open CARE Birthday checklist."""
+    """Open monthly CARE Birthday checklist."""
 
     if not await check_care_permission(
         update
@@ -764,6 +1045,66 @@ async def care_birthday_checklist_command(
     )
 
 
+# =========================================================
+# ANNUAL GIFT PREP COMMAND
+# =========================================================
+
+async def care_annual_prep_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Open Annual Gift Prep checklist."""
+
+    if not await check_care_permission(
+        update
+    ):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    if context.args:
+
+        try:
+            target_year = int(
+                context.args[0]
+            )
+
+            if target_year < 2000:
+                raise ValueError
+
+        except ValueError:
+
+            await message.reply_text(
+                "❌ Invalid year.\n\n"
+                "Example:\n"
+                "/careannualprep 2027"
+            )
+
+            return
+
+    else:
+
+        target_year = (
+            get_current_annual_prep_year()
+        )
+
+    await message.reply_text(
+        format_care_annual_prep(
+            target_year
+        ),
+        reply_markup=build_annual_prep_keyboard(
+            target_year
+        ),
+    )
+
+
+# =========================================================
+# MANUAL REMINDER CHECK
+# =========================================================
+
 async def run_care_birthday_check_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -790,11 +1131,15 @@ async def run_care_birthday_check_command(
     )
 
 
+# =========================================================
+# TEST MONTHLY REMINDER
+# =========================================================
+
 async def test_care_birthday_reminder_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Force-send a test CARE Birthday reminder."""
+    """Force-send a test monthly CARE Birthday reminder."""
 
     if not await check_care_permission(
         update
@@ -807,6 +1152,7 @@ async def test_care_birthday_reminder_command(
         return
 
     if len(context.args) != 2:
+
         await message.reply_text(
             "Usage:\n"
             "/testcarebirthdayreminder TYPE MM-YYYY\n\n"
@@ -819,6 +1165,7 @@ async def test_care_birthday_reminder_command(
             "Example:\n"
             "/testcarebirthdayreminder open 10-2026"
         )
+
         return
 
     reminder_type = (
@@ -831,19 +1178,24 @@ async def test_care_birthday_reminder_command(
         year, month = parse_month_year(
             context.args[1]
         )
+
     except ValueError:
+
         await message.reply_text(
             "❌ Invalid month."
         )
+
         return
 
     if reminder_type == "open":
+
         text = build_open_reminder(
             year,
             month,
         )
 
     elif reminder_type == "mid":
+
         text = build_progress_reminder(
             year,
             month,
@@ -857,6 +1209,7 @@ async def test_care_birthday_reminder_command(
             )
 
     elif reminder_type == "final":
+
         text = build_progress_reminder(
             year,
             month,
@@ -870,21 +1223,25 @@ async def test_care_birthday_reminder_command(
             )
 
     elif reminder_type == "announcement":
+
         text = build_announcement_reminder(
             year,
             month,
         )
 
     elif reminder_type == "distribution":
+
         text = build_distribution_reminder(
             year,
             month,
         )
 
     else:
+
         await message.reply_text(
             "❌ Unknown reminder type."
         )
+
         return
 
     sent = await send_care_birthday_message(
@@ -893,15 +1250,168 @@ async def test_care_birthday_reminder_command(
     )
 
     if sent:
+
         await message.reply_text(
             "✅ Test reminder sent to the "
             "CARE Birthday destination."
         )
+
     else:
+
         await message.reply_text(
             "❌ Test reminder could not be sent."
         )
 
+
+# =========================================================
+# TEST ANNUAL GIFT PREP REMINDER
+# =========================================================
+
+async def test_care_annual_reminder_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Force-send an Annual Gift Prep reminder."""
+
+    if not await check_care_permission(
+        update
+    ):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    if len(context.args) != 2:
+
+        await message.reply_text(
+            "Usage:\n"
+            "/testcareannualreminder TYPE YEAR\n\n"
+            "Types:\n"
+            "open\n"
+            "nov15\n"
+            "dec1\n"
+            "dec15\n"
+            "dec25\n\n"
+            "Example:\n"
+            "/testcareannualreminder open 2027"
+        )
+
+        return
+
+    reminder_type = (
+        context.args[0]
+        .strip()
+        .lower()
+    )
+
+    try:
+        target_year = int(
+            context.args[1]
+        )
+
+        if target_year < 2000:
+            raise ValueError
+
+    except ValueError:
+
+        await message.reply_text(
+            "❌ Invalid year."
+        )
+
+        return
+
+    if reminder_type == "open":
+
+        heading = (
+            f"🎁 {target_year} "
+            "ANNUAL BIRTHDAY GIFT PREP"
+        )
+
+        full_checklist = True
+
+    elif reminder_type == "nov15":
+
+        heading = (
+            f"🔔 {target_year} "
+            "ANNUAL GIFT PREP PROGRESS CHECK"
+        )
+
+        full_checklist = False
+
+    elif reminder_type == "dec1":
+
+        heading = (
+            f"🔔 {target_year} "
+            "ANNUAL GIFT PREP — DECEMBER CHECK"
+        )
+
+        full_checklist = False
+
+    elif reminder_type == "dec15":
+
+        heading = (
+            f"⚠️ {target_year} "
+            "ANNUAL GIFT PREP — FINAL PACKING CHECK"
+        )
+
+        full_checklist = False
+
+    elif reminder_type == "dec25":
+
+        heading = (
+            f"🚨 {target_year} "
+            "ANNUAL GIFT PREP — FINAL REMINDER"
+        )
+
+        full_checklist = False
+
+    else:
+
+        await message.reply_text(
+            "❌ Unknown reminder type."
+        )
+
+        return
+
+    text = build_annual_prep_reminder_text(
+        target_year,
+        heading,
+        full_checklist=full_checklist,
+    )
+
+    if text is None:
+
+        await message.reply_text(
+            f"✅ {target_year} Annual Gift Prep "
+            "is already fully completed."
+        )
+
+        return
+
+    sent = await send_care_birthday_message(
+        context,
+        text,
+    )
+
+    if sent:
+
+        await message.reply_text(
+            "✅ Annual Gift Prep test reminder "
+            "sent to the CARE Birthday destination."
+        )
+
+    else:
+
+        await message.reply_text(
+            "❌ Test reminder could not be sent."
+        )
+
+
+# =========================================================
+# BUTTON CALLBACKS
+# =========================================================
 
 async def handle_care_birthday_callback(
     update: Update,
@@ -926,10 +1436,12 @@ async def handle_care_birthday_callback(
     if not is_care_leader(
         user_id
     ):
+
         await query.edit_message_text(
             "⛔ You do not have permission "
             "to manage CARE Birthdays."
         )
+
         return
 
     callback_data = (
@@ -937,10 +1449,15 @@ async def handle_care_birthday_callback(
         or ""
     )
 
+    # -----------------------------------------------------
+    # CONTROL PANEL → CURRENT BATCH
+    # -----------------------------------------------------
+
     if (
         callback_data
         == "panel:care:birthday:comingsoon:batch"
     ):
+
         year, month = (
             get_current_care_birthday_period()
         )
@@ -955,12 +1472,18 @@ async def handle_care_birthday_callback(
                 month,
             ),
         )
+
         return
+
+    # -----------------------------------------------------
+    # CONTROL PANEL → CHECKLIST
+    # -----------------------------------------------------
 
     if (
         callback_data
         == "panel:care:birthday:comingsoon:checklist"
     ):
+
         year, month = (
             get_current_care_birthday_period()
         )
@@ -975,11 +1498,41 @@ async def handle_care_birthday_callback(
                 month,
             ),
         )
+
         return
+
+    # -----------------------------------------------------
+    # CONTROL PANEL → ANNUAL GIFT PREP
+    # -----------------------------------------------------
+
+    if (
+        callback_data
+        == "panel:care:birthday:annual"
+    ):
+
+        target_year = (
+            get_current_annual_prep_year()
+        )
+
+        await query.edit_message_text(
+            format_care_annual_prep(
+                target_year
+            ),
+            reply_markup=build_annual_prep_keyboard(
+                target_year
+            ),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # VIEW MONTHLY BATCH
+    # -----------------------------------------------------
 
     if callback_data.startswith(
         "carebirthday:view:"
     ):
+
         parts = callback_data.split(
             ":"
         )
@@ -1002,11 +1555,17 @@ async def handle_care_birthday_callback(
                 month,
             ),
         )
+
         return
+
+    # -----------------------------------------------------
+    # MONTHLY CHECKLIST
+    # -----------------------------------------------------
 
     if callback_data.startswith(
         "carebirthday:checklist:"
     ):
+
         parts = callback_data.split(
             ":"
         )
@@ -1029,11 +1588,17 @@ async def handle_care_birthday_callback(
                 month,
             ),
         )
+
         return
+
+    # -----------------------------------------------------
+    # TOGGLE MONTHLY ITEM
+    # -----------------------------------------------------
 
     if callback_data.startswith(
         "carebirthday:toggle:"
     ):
+
         parts = callback_data.split(
             ":"
         )
@@ -1064,8 +1629,74 @@ async def handle_care_birthday_callback(
                 month,
             ),
         )
+
         return
 
+    # -----------------------------------------------------
+    # VIEW ANNUAL GIFT PREP
+    # -----------------------------------------------------
+
+    if callback_data.startswith(
+        "carebirthday:annual:"
+    ):
+
+        parts = callback_data.split(
+            ":"
+        )
+
+        target_year = int(
+            parts[2]
+        )
+
+        await query.edit_message_text(
+            format_care_annual_prep(
+                target_year
+            ),
+            reply_markup=build_annual_prep_keyboard(
+                target_year
+            ),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # TOGGLE ANNUAL GIFT PREP ITEM
+    # -----------------------------------------------------
+
+    if callback_data.startswith(
+        "carebirthday:annualtoggle:"
+    ):
+
+        parts = callback_data.split(
+            ":"
+        )
+
+        target_year = int(
+            parts[2]
+        )
+
+        item_key = parts[3]
+
+        toggle_care_annual_prep_item(
+            target_year,
+            item_key,
+        )
+
+        await query.edit_message_text(
+            format_care_annual_prep(
+                target_year
+            ),
+            reply_markup=build_annual_prep_keyboard(
+                target_year
+            ),
+        )
+
+        return
+
+
+# =========================================================
+# REGISTER HANDLERS
+# =========================================================
 
 def register_care_birthday_handlers(
     application: Application,
@@ -1102,6 +1733,13 @@ def register_care_birthday_handlers(
 
     application.add_handler(
         CommandHandler(
+            "careannualprep",
+            care_annual_prep_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
             "runcarebirthdaycheck",
             run_care_birthday_check_command,
         )
@@ -1115,12 +1753,19 @@ def register_care_birthday_handlers(
     )
 
     application.add_handler(
+        CommandHandler(
+            "testcareannualreminder",
+            test_care_annual_reminder_command,
+        )
+    )
+
+    application.add_handler(
         CallbackQueryHandler(
             handle_care_birthday_callback,
             pattern=(
                 r"^(?:"
-                r"panel:care:birthday:comingsoon:"
-                r"(?:batch|checklist)"
+                r"panel:care:birthday:"
+                r"(?:comingsoon:(?:batch|checklist)|annual)"
                 r"|carebirthday:"
                 r")"
             ),
@@ -1128,16 +1773,20 @@ def register_care_birthday_handlers(
     )
 
     if not CARE_BIRTHDAY_SCHEDULER_ENABLED:
+
         logger.info(
             "CARE Birthday scheduler is disabled."
         )
+
         return
 
     if application.job_queue is None:
+
         logger.error(
             "JobQueue unavailable. "
             "CARE Birthday scheduler not started."
         )
+
         return
 
     application.job_queue.run_daily(

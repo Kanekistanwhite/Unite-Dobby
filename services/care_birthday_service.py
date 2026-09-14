@@ -12,15 +12,24 @@ from sqlalchemy import (
 )
 
 from database.database import SessionLocal
+from models.care_birthday_annual_prep import CareBirthdayAnnualPrep
 from models.care_birthday_batch import CareBirthdayBatch
 from models.care_birthday_member import CareBirthdayMember
 from models.care_birthday_reminder import CareBirthdayReminder
 
 
+# =========================================================
+# TIMEZONE
+# =========================================================
+
 SINGAPORE_TIMEZONE = ZoneInfo(
     "Asia/Singapore"
 )
 
+
+# =========================================================
+# CARE BIRTHDAY ROSTER
+# =========================================================
 
 CARE_BIRTHDAY_ROSTER = [
     # January
@@ -119,6 +128,10 @@ CARE_BIRTHDAY_ROSTER = [
 ]
 
 
+# =========================================================
+# MONTHLY BIRTHDAY CHECKLIST
+# =========================================================
+
 CARE_BIRTHDAY_PREP_CHECKLIST = {
     "celebrants": (
         "celebrant_list_confirmed",
@@ -165,6 +178,50 @@ CARE_BIRTHDAY_ALL_CHECKLIST = {
 }
 
 
+# =========================================================
+# ANNUAL GIFT PREP CHECKLIST
+# =========================================================
+
+CARE_ANNUAL_GIFT_CHECKLIST = {
+    "gift": (
+        "gift_finalised",
+        "Standard birthday gift finalised",
+    ),
+    "quantity": (
+        "quantity_confirmed",
+        "Quantity required for the year confirmed",
+    ),
+    "purchase_gifts": (
+        "gifts_purchased",
+        "Birthday gifts purchased",
+    ),
+    "materials": (
+        "packing_materials_purchased",
+        "Packing materials / logistics purchased",
+    ),
+    "arrived": (
+        "all_items_arrived",
+        "All items received",
+    ),
+    "packed": (
+        "gifts_packed",
+        "Birthday gifts packed / assembled",
+    ),
+    "counted": (
+        "packs_counted",
+        "Completed gift packs counted",
+    ),
+    "stock": (
+        "sufficient_stock_confirmed",
+        "Sufficient stock confirmed for the year",
+    ),
+}
+
+
+# =========================================================
+# GENERAL HELPERS
+# =========================================================
+
 def get_singapore_now() -> datetime:
     """Return current Singapore time."""
 
@@ -174,6 +231,49 @@ def get_singapore_now() -> datetime:
         tzinfo=None
     )
 
+
+def get_next_month(
+    year: int,
+    month: int,
+) -> tuple[int, int]:
+    """Return the following year and month."""
+
+    if month == 12:
+        return (
+            year + 1,
+            1,
+        )
+
+    return (
+        year,
+        month + 1,
+    )
+
+
+def get_first_sunday(
+    year: int,
+    month: int,
+) -> date:
+    """Calculate the first Sunday of a month."""
+
+    first_day = date(
+        year,
+        month,
+        1,
+    )
+
+    days_until_sunday = (
+        6 - first_day.weekday()
+    ) % 7
+
+    return first_day + timedelta(
+        days=days_until_sunday
+    )
+
+
+# =========================================================
+# ROSTER
+# =========================================================
 
 def seed_care_birthday_roster() -> tuple[int, int]:
     """Create or update CARE Birthday roster."""
@@ -233,6 +333,7 @@ def get_care_birthdays_for_month(
         )
 
     with SessionLocal() as session:
+
         members = session.scalars(
             select(CareBirthdayMember)
             .where(
@@ -250,47 +351,12 @@ def get_care_birthdays_for_month(
         )
 
 
-def get_first_sunday(
-    year: int,
-    month: int,
-) -> date:
-    """Calculate first Sunday of month."""
-
-    first_day = date(
-        year,
-        month,
-        1,
-    )
-
-    days_until_sunday = (
-        6 - first_day.weekday()
-    ) % 7
-
-    return first_day + timedelta(
-        days=days_until_sunday
-    )
-
-
-def get_next_month(
-    year: int,
-    month: int,
-) -> tuple[int, int]:
-    """Return the following year/month."""
-
-    if month == 12:
-        return (
-            year + 1,
-            1,
-        )
-
-    return (
-        year,
-        month + 1,
-    )
-
+# =========================================================
+# MONTHLY BIRTHDAY BATCH
+# =========================================================
 
 def get_current_care_birthday_period() -> tuple[int, int]:
-    """Return the batch currently being prepared."""
+    """Return the birthday month currently being prepared."""
 
     now = get_singapore_now()
 
@@ -319,6 +385,7 @@ def get_or_create_care_birthday_batch(
     )
 
     with SessionLocal() as session:
+
         batch = session.scalar(
             select(CareBirthdayBatch).where(
                 CareBirthdayBatch.year == year,
@@ -363,6 +430,7 @@ def toggle_care_birthday_checklist_item(
     field_name = checklist_item[0]
 
     with SessionLocal() as session:
+
         batch = session.scalar(
             select(CareBirthdayBatch).where(
                 CareBirthdayBatch.year == year,
@@ -406,7 +474,7 @@ def toggle_care_birthday_checklist_item(
 def get_incomplete_preparation_items(
     batch: CareBirthdayBatch,
 ) -> list[str]:
-    """Return unfinished preparation checklist labels."""
+    """Return unfinished monthly preparation checklist items."""
 
     incomplete = []
 
@@ -426,6 +494,10 @@ def get_incomplete_preparation_items(
     return incomplete
 
 
+# =========================================================
+# MONTHLY REMINDER HISTORY
+# =========================================================
+
 def has_care_birthday_reminder_been_sent(
     year: int,
     month: int,
@@ -434,6 +506,7 @@ def has_care_birthday_reminder_been_sent(
     """Check whether a specific reminder was already sent."""
 
     with SessionLocal() as session:
+
         reminder = session.scalar(
             select(CareBirthdayReminder).where(
                 CareBirthdayReminder.year == year,
@@ -479,6 +552,10 @@ def record_care_birthday_reminder_sent(
         session.commit()
 
 
+# =========================================================
+# MONTHLY DISPLAY
+# =========================================================
+
 def format_celebrant_list(
     month: int,
 ) -> str:
@@ -494,6 +571,7 @@ def format_celebrant_list(
     lines = []
 
     for member in members:
+
         short_month = month_name[
             member.birthday_month
         ][:3]
@@ -550,7 +628,7 @@ def format_care_birthday_batch(
     year: int,
     month: int,
 ) -> str:
-    """Format complete CARE Birthday batch."""
+    """Format complete monthly CARE Birthday batch."""
 
     members = get_care_birthdays_for_month(
         month
@@ -660,3 +738,420 @@ def format_care_birthday_batch(
     return "\n".join(
         lines
     )
+
+
+# =========================================================
+# ANNUAL GIFT PREP
+# =========================================================
+
+def get_or_create_care_annual_prep(
+    target_year: int,
+) -> CareBirthdayAnnualPrep:
+    """Get or create annual birthday gift preparation."""
+
+    if target_year < 2000:
+        raise ValueError(
+            "Invalid target year."
+        )
+
+    with SessionLocal() as session:
+
+        annual = session.scalar(
+            select(CareBirthdayAnnualPrep).where(
+                CareBirthdayAnnualPrep.target_year
+                == target_year
+            )
+        )
+
+        if annual is None:
+            annual = CareBirthdayAnnualPrep(
+                target_year=target_year,
+            )
+
+            session.add(
+                annual
+            )
+
+            session.commit()
+            session.refresh(
+                annual
+            )
+
+        return annual
+
+
+def get_current_annual_prep_year() -> int:
+    """
+    Return the year we are preparing gifts for.
+
+    Annual Gift Prep always concerns the following year.
+    Example:
+    2026 -> prepare 2027 gifts.
+    """
+
+    now = get_singapore_now()
+
+    return now.year + 1
+
+
+def toggle_care_annual_prep_item(
+    target_year: int,
+    item_key: str,
+) -> CareBirthdayAnnualPrep:
+    """Toggle one Annual Gift Prep checklist item."""
+
+    checklist_item = CARE_ANNUAL_GIFT_CHECKLIST.get(
+        item_key
+    )
+
+    if checklist_item is None:
+        raise ValueError(
+            "Unknown Annual Gift Prep item."
+        )
+
+    field_name = checklist_item[0]
+
+    with SessionLocal() as session:
+
+        annual = session.scalar(
+            select(CareBirthdayAnnualPrep).where(
+                CareBirthdayAnnualPrep.target_year
+                == target_year
+            )
+        )
+
+        if annual is None:
+            annual = CareBirthdayAnnualPrep(
+                target_year=target_year,
+            )
+
+            session.add(
+                annual
+            )
+
+            session.flush()
+
+        current_value = getattr(
+            annual,
+            field_name,
+        )
+
+        setattr(
+            annual,
+            field_name,
+            not current_value,
+        )
+
+        annual.updated_at = datetime.now()
+
+        session.commit()
+        session.refresh(
+            annual
+        )
+
+        return annual
+
+
+def get_incomplete_annual_prep_items(
+    annual: CareBirthdayAnnualPrep,
+) -> list[str]:
+    """Return unfinished Annual Gift Prep items."""
+
+    incomplete = []
+
+    for (
+        field_name,
+        label,
+    ) in CARE_ANNUAL_GIFT_CHECKLIST.values():
+
+        if not getattr(
+            annual,
+            field_name,
+        ):
+            incomplete.append(
+                label
+            )
+
+    return incomplete
+
+
+def is_annual_prep_complete(
+    annual: CareBirthdayAnnualPrep,
+) -> bool:
+    """Check whether every Annual Gift Prep item is complete."""
+
+    return not get_incomplete_annual_prep_items(
+        annual
+    )
+
+
+def format_care_annual_prep(
+    target_year: int,
+) -> str:
+    """Format Annual Gift Prep checklist."""
+
+    annual = get_or_create_care_annual_prep(
+        target_year
+    )
+
+    completed_count = 0
+
+    for (
+        field_name,
+        label,
+    ) in CARE_ANNUAL_GIFT_CHECKLIST.values():
+
+        if getattr(
+            annual,
+            field_name,
+        ):
+            completed_count += 1
+
+    if completed_count == len(
+        CARE_ANNUAL_GIFT_CHECKLIST
+    ):
+        status = "✅ COMPLETED"
+
+    elif completed_count == 0:
+        status = "⚪ NOT STARTED"
+
+    else:
+        status = "🟡 IN PROGRESS"
+
+    lines = [
+        f"🎁 {target_year} ANNUAL GIFT PREP",
+        "",
+        status,
+        "",
+        "📝 PLANNING",
+    ]
+
+    for item_key in (
+        "gift",
+        "quantity",
+    ):
+
+        field_name, label = (
+            CARE_ANNUAL_GIFT_CHECKLIST[
+                item_key
+            ]
+        )
+
+        lines.append(
+            f"{'✅' if getattr(annual, field_name) else '⬜'} "
+            f"{label}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "🛒 PURCHASING",
+        ]
+    )
+
+    for item_key in (
+        "purchase_gifts",
+        "materials",
+        "arrived",
+    ):
+
+        field_name, label = (
+            CARE_ANNUAL_GIFT_CHECKLIST[
+                item_key
+            ]
+        )
+
+        lines.append(
+            f"{'✅' if getattr(annual, field_name) else '⬜'} "
+            f"{label}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "📦 PACKING",
+        ]
+    )
+
+    for item_key in (
+        "packed",
+        "counted",
+        "stock",
+    ):
+
+        field_name, label = (
+            CARE_ANNUAL_GIFT_CHECKLIST[
+                item_key
+            ]
+        )
+
+        lines.append(
+            f"{'✅' if getattr(annual, field_name) else '⬜'} "
+            f"{label}"
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                f"Progress: {completed_count} / "
+                f"{len(CARE_ANNUAL_GIFT_CHECKLIST)}"
+            ),
+            "",
+            f"🎯 Ready before 1 January {target_year}",
+        ]
+    )
+
+    return "\n".join(
+        lines
+    )
+
+
+# =========================================================
+# ANNUAL GIFT PREP REMINDERS
+# =========================================================
+
+def build_annual_prep_reminder_text(
+    target_year: int,
+    heading: str,
+    full_checklist: bool = False,
+) -> str | None:
+    """Build Annual Gift Prep reminder."""
+
+    annual = get_or_create_care_annual_prep(
+        target_year
+    )
+
+    if is_annual_prep_complete(
+        annual
+    ):
+        return None
+
+    lines = [
+        heading,
+        "",
+        f"🎁 Preparing birthday gifts for {target_year}",
+        "",
+    ]
+
+    if full_checklist:
+
+        for (
+            field_name,
+            label,
+        ) in CARE_ANNUAL_GIFT_CHECKLIST.values():
+
+            completed = getattr(
+                annual,
+                field_name,
+            )
+
+            lines.append(
+                f"{'✅' if completed else '⬜'} {label}"
+            )
+
+    else:
+
+        incomplete = get_incomplete_annual_prep_items(
+            annual
+        )
+
+        for item in incomplete:
+            lines.append(
+                f"⬜ {item}"
+            )
+
+    lines.extend(
+        [
+            "",
+            (
+                f"🎯 Goal: Everything ready before "
+                f"1 January {target_year}."
+            ),
+        ]
+    )
+
+    return "\n".join(
+        lines
+    )
+
+
+def annual_reminder_was_sent(
+    target_year: int,
+    field_name: str,
+) -> bool:
+    """Check whether an Annual Gift Prep reminder was sent."""
+
+    allowed_fields = {
+        "open_reminder_sent",
+        "nov15_reminder_sent",
+        "dec1_reminder_sent",
+        "dec15_reminder_sent",
+        "dec25_reminder_sent",
+    }
+
+    if field_name not in allowed_fields:
+        raise ValueError(
+            "Unknown annual reminder flag."
+        )
+
+    annual = get_or_create_care_annual_prep(
+        target_year
+    )
+
+    return bool(
+        getattr(
+            annual,
+            field_name,
+        )
+    )
+
+
+def mark_annual_reminder_sent(
+    target_year: int,
+    field_name: str,
+) -> None:
+    """Mark one Annual Gift Prep reminder as sent."""
+
+    allowed_fields = {
+        "open_reminder_sent",
+        "nov15_reminder_sent",
+        "dec1_reminder_sent",
+        "dec15_reminder_sent",
+        "dec25_reminder_sent",
+    }
+
+    if field_name not in allowed_fields:
+        raise ValueError(
+            "Unknown annual reminder flag."
+        )
+
+    with SessionLocal() as session:
+
+        annual = session.scalar(
+            select(CareBirthdayAnnualPrep).where(
+                CareBirthdayAnnualPrep.target_year
+                == target_year
+            )
+        )
+
+        if annual is None:
+            annual = CareBirthdayAnnualPrep(
+                target_year=target_year,
+            )
+
+            session.add(
+                annual
+            )
+
+            session.flush()
+
+        setattr(
+            annual,
+            field_name,
+            True,
+        )
+
+        annual.updated_at = datetime.now()
+
+        session.commit()
