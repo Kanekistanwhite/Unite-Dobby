@@ -45,6 +45,7 @@ def parse_user_ids(
             user_ids.add(
                 int(cleaned_item)
             )
+
         except ValueError as error:
             raise RuntimeError(
                 "User ID variables must contain only Telegram "
@@ -69,6 +70,7 @@ def read_optional_int(
 
     try:
         return int(value)
+
     except ValueError as error:
         raise RuntimeError(
             f"{variable_name} must be a valid integer."
@@ -240,5 +242,23 @@ CARE_BIRTHDAY_TOPIC_ID = read_optional_int(
 
 CARE_BIRTHDAY_SCHEDULER_ENABLED = read_boolean(
     "CARE_BIRTHDAY_SCHEDULER_ENABLED",
+    default=False,
+)
+
+
+# ---------------------------------------------------------
+# CARE NEWCOMERS
+# ---------------------------------------------------------
+
+CARE_NEWCOMER_CHAT_ID = read_optional_int(
+    "CARE_NEWCOMER_CHAT_ID"
+)
+
+CARE_NEWCOMER_TOPIC_ID = read_optional_int(
+    "CARE_NEWCOMER_TOPIC_ID"
+)
+
+CARE_NEWCOMER_SCHEDULER_ENABLED = read_boolean(
+    "CARE_NEWCOMER_SCHEDULER_ENABLED",
     default=False,
 )

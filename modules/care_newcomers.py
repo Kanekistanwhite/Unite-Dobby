@@ -1,24 +1,56 @@
-from telegram import Update
+import logging
+from datetime import time
+from zoneinfo import ZoneInfo
+
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
 )
 
 from config.settings import (
     CARE_LEADER_USER_IDS,
+    CARE_NEWCOMER_CHAT_ID,
+    CARE_NEWCOMER_SCHEDULER_ENABLED,
+    CARE_NEWCOMER_TOPIC_ID,
 )
 from services.care_newcomer_service import (
+    NEWCOMER_ANNUAL_PREP_CHECKLIST,
     add_newcomer_stock,
+    build_midyear_stocktake_reminder,
+    build_newcomer_annual_reminder,
     find_newcomer,
+    format_newcomer_annual_prep,
     format_newcomer_inventory,
     format_newcomer_record,
     format_newcomer_register,
+    get_current_newcomer_prep_year,
+    get_or_create_newcomer_annual_prep,
     get_singapore_today,
     give_pack_to_newcomer,
+    mark_midyear_reminder_sent,
+    mark_newcomer_annual_reminder_sent,
+    midyear_reminder_was_sent,
+    newcomer_annual_reminder_was_sent,
     register_newcomer,
     remove_newcomer,
     set_newcomer_stock,
+    toggle_newcomer_annual_prep_item,
+)
+
+
+logger = logging.getLogger(
+    __name__
+)
+
+SINGAPORE_TIMEZONE = ZoneInfo(
+    "Asia/Singapore"
 )
 
 
@@ -29,7 +61,7 @@ from services.care_newcomer_service import (
 def is_care_leader(
     user_id: int | None,
 ) -> bool:
-    """Check whether user is an approved CARE leader."""
+    """Check whether user is approved CARE leader."""
 
     if user_id is None:
         return False
@@ -72,14 +104,298 @@ async def check_care_permission(
 
 
 # =========================================================
-# ADD NEWCOMER
+# ANNUAL PREP KEYBOARD
+# =========================================================
+
+def build_newcomer_annual_prep_keyboard(
+    target_year: int,
+) -> InlineKeyboardMarkup:
+    """Build interactive annual prep checklist."""
+
+    prep = get_or_create_newcomer_annual_prep(
+        target_year
+    )
+
+    labels = {
+        "contents": "📋 Contents Confirmed",
+        "quantity": "🔢 Quantity Confirmed",
+        "items": "🛒 Items Purchased",
+        "packaging": "📦 Packaging Purchased",
+        "arrived": "📥 All Items Received",
+        "packed": "🎁 Packs Packed",
+        "stock": "✅ Final Stock Confirmed",
+    }
+
+    keyboard = []
+
+    for (
+        item_key,
+        (
+            field_name,
+            label,
+        ),
+    ) in NEWCOMER_ANNUAL_PREP_CHECKLIST.items():
+
+        done = getattr(
+            prep,
+            field_name,
+        )
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    (
+                        f"{'✅' if done else '⬜'} "
+                        f"{labels[item_key]}"
+                    ),
+                    callback_data=(
+                        "carenewcomer:annualtoggle:"
+                        f"{target_year}:{item_key}"
+                    ),
+                )
+            ]
+        )
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+# =========================================================
+# SEND MESSAGE
+# =========================================================
+
+async def send_care_newcomer_message(
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+) -> bool:
+    """Send Newcomer reminder to configured topic."""
+
+    if CARE_NEWCOMER_CHAT_ID is None:
+
+        logger.error(
+            "CARE_NEWCOMER_CHAT_ID is not configured."
+        )
+
+        return False
+
+    kwargs = {}
+
+    if CARE_NEWCOMER_TOPIC_ID is not None:
+
+        kwargs[
+            "message_thread_id"
+        ] = CARE_NEWCOMER_TOPIC_ID
+
+    try:
+
+        await context.bot.send_message(
+            chat_id=CARE_NEWCOMER_CHAT_ID,
+            text=text,
+            **kwargs,
+        )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "CARE Newcomer reminder could not be sent."
+        )
+
+        return False
+
+
+# =========================================================
+# AUTOMATIC REMINDERS
+# =========================================================
+
+async def send_due_care_newcomer_reminders(
+    context: ContextTypes.DEFAULT_TYPE,
+) -> int:
+    """Send Newcomer reminders due today."""
+
+    today = get_singapore_today()
+
+    sent_count = 0
+
+    # -----------------------------------------------------
+    # MID-YEAR STOCKTAKE — 1 JULY
+    # -----------------------------------------------------
+
+    if (
+        today.month == 7
+        and today.day == 1
+    ):
+
+        if not midyear_reminder_was_sent(
+            today.year
+        ):
+
+            sent = await send_care_newcomer_message(
+                context,
+                build_midyear_stocktake_reminder(
+                    today.year
+                ),
+            )
+
+            if sent:
+
+                mark_midyear_reminder_sent(
+                    today.year
+                )
+
+                sent_count += 1
+
+    # -----------------------------------------------------
+    # ANNUAL PREP — NOVEMBER / DECEMBER
+    # -----------------------------------------------------
+
+    target_year = (
+        today.year + 1
+    )
+
+    heading = None
+    reminder_flag = None
+    full_checklist = False
+
+    if (
+        today.month == 11
+        and today.day == 1
+    ):
+
+        heading = (
+            f"👋 {target_year} "
+            "NEWCOMER PACK PREPARATION"
+        )
+
+        reminder_flag = (
+            "open_reminder_sent"
+        )
+
+        full_checklist = True
+
+    elif (
+        today.month == 11
+        and today.day == 15
+    ):
+
+        heading = (
+            f"🔔 {target_year} NEWCOMER PACK "
+            "PREP PROGRESS CHECK"
+        )
+
+        reminder_flag = (
+            "nov15_reminder_sent"
+        )
+
+    elif (
+        today.month == 12
+        and today.day == 1
+    ):
+
+        heading = (
+            f"🔔 {target_year} NEWCOMER PACK "
+            "PREP — DECEMBER CHECK"
+        )
+
+        reminder_flag = (
+            "dec1_reminder_sent"
+        )
+
+    elif (
+        today.month == 12
+        and today.day == 15
+    ):
+
+        heading = (
+            f"⚠️ {target_year} NEWCOMER PACK "
+            "PREP — FINAL PACKING CHECK"
+        )
+
+        reminder_flag = (
+            "dec15_reminder_sent"
+        )
+
+    elif (
+        today.month == 12
+        and today.day == 25
+    ):
+
+        heading = (
+            f"🚨 {target_year} NEWCOMER PACK "
+            "PREP — FINAL REMINDER"
+        )
+
+        reminder_flag = (
+            "dec25_reminder_sent"
+        )
+
+    if (
+        heading is not None
+        and reminder_flag is not None
+    ):
+
+        if not newcomer_annual_reminder_was_sent(
+            target_year,
+            reminder_flag,
+        ):
+
+            text = build_newcomer_annual_reminder(
+                target_year,
+                heading,
+                full_checklist=full_checklist,
+            )
+
+            if text is not None:
+
+                sent = await send_care_newcomer_message(
+                    context,
+                    text,
+                )
+
+                if sent:
+
+                    mark_newcomer_annual_reminder_sent(
+                        target_year,
+                        reminder_flag,
+                    )
+
+                    sent_count += 1
+
+    return sent_count
+
+
+async def scheduled_care_newcomer_job(
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Run daily Newcomer scheduler."""
+
+    logger.info(
+        "Running CARE Newcomer reminder check."
+    )
+
+    sent_count = (
+        await send_due_care_newcomer_reminders(
+            context
+        )
+    )
+
+    logger.info(
+        "CARE Newcomer check complete. "
+        "%s reminder(s) sent.",
+        sent_count,
+    )
+
+
+# =========================================================
+# EXISTING NEWCOMER COMMANDS
 # =========================================================
 
 async def add_newcomer_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Register a new CARE newcomer."""
 
     if not await check_care_permission(
         update
@@ -113,27 +429,8 @@ async def add_newcomer_command(
         )
     )
 
-    newcomer_name = (
-        newcomer_name.strip()
-    )
-
-    invited_by = (
-        invited_by.strip()
-    )
-
-    if (
-        not newcomer_name
-        or not invited_by
-    ):
-
-        await message.reply_text(
-            "❌ Please include both the newcomer's "
-            "name and who invited them.\n\n"
-            "Example:\n"
-            "/addnewcomer John Tan | Gordon"
-        )
-
-        return
+    newcomer_name = newcomer_name.strip()
+    invited_by = invited_by.strip()
 
     try:
 
@@ -176,7 +473,8 @@ async def add_newcomer_command(
             f"📅 First visit: "
             f"{newcomer.first_visit_date.strftime('%d %b %Y')}\n"
             "🎁 Newcomer pack: ✅ Given\n\n"
-            f"📦 Packs remaining: {inventory.current_stock}\n\n"
+            f"📦 Packs remaining: "
+            f"{inventory.current_stock}\n\n"
             "📝 REMINDER:\n"
             f"Please remember to add "
             f"{newcomer.display_name} into the "
@@ -189,8 +487,7 @@ async def add_newcomer_command(
         ):
 
             response += (
-                "\n\n"
-                "⚠️ LOW STOCK WARNING\n"
+                "\n\n⚠️ LOW STOCK WARNING\n"
                 f"Only {inventory.current_stock} "
                 "newcomer pack(s) remain."
             )
@@ -205,28 +502,19 @@ async def add_newcomer_command(
         "✅ NEWCOMER REGISTERED\n\n"
         f"👋 Name: {newcomer.display_name}\n"
         f"🙋 Invited by: {newcomer.invited_by}\n"
-        f"📅 First visit: "
-        f"{newcomer.first_visit_date.strftime('%d %b %Y')}\n"
         "🎁 Newcomer pack: ❌ NOT GIVEN\n\n"
-        "🚨 There are currently no newcomer packs left.\n\n"
-        "After replenishing stock, use:\n"
+        "🚨 There are no newcomer packs left.\n\n"
+        f"After replenishing use:\n"
         f"/givepack {newcomer.display_name}\n\n"
-        "📝 REMINDER:\n"
-        f"Please remember to add "
-        f"{newcomer.display_name} into the "
+        "📝 Remember to add this person to the "
         "CARE Newcomer Master Sheet."
     )
 
-
-# =========================================================
-# FIND NEWCOMER
-# =========================================================
 
 async def find_newcomer_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Search the newcomer register."""
 
     if not await check_care_permission(
         update
@@ -245,10 +533,7 @@ async def find_newcomer_command(
     if not name:
 
         await message.reply_text(
-            "Usage:\n"
-            "/findnewcomer NAME\n\n"
-            "Example:\n"
-            "/findnewcomer John Tan"
+            "Usage:\n/findnewcomer NAME"
         )
 
         return
@@ -260,8 +545,7 @@ async def find_newcomer_command(
     if newcomer is None:
 
         await message.reply_text(
-            "🔎 NEWCOMER NOT FOUND\n\n"
-            f"No record was found for:\n{name}"
+            f"🔎 No record found for:\n{name}"
         )
 
         return
@@ -272,87 +556,59 @@ async def find_newcomer_command(
     )
 
 
-# =========================================================
-# REGISTER
-# =========================================================
-
 async def newcomer_register_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Show recent newcomer register."""
 
     if not await check_care_permission(
         update
     ):
         return
 
-    message = update.effective_message
-
-    if message is None:
-        return
-
-    await message.reply_text(
+    await update.effective_message.reply_text(
         format_newcomer_register()
     )
 
-
-# =========================================================
-# INVENTORY
-# =========================================================
 
 async def newcomer_stock_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Show newcomer-pack stock."""
 
     if not await check_care_permission(
         update
     ):
         return
 
-    message = update.effective_message
-
-    if message is None:
-        return
-
-    year = (
-        get_singapore_today().year
-    )
+    year = get_singapore_today().year
 
     if context.args:
 
         try:
-
             year = int(
                 context.args[0]
             )
 
         except ValueError:
 
-            await message.reply_text(
+            await update.effective_message.reply_text(
                 "❌ Invalid year."
             )
 
             return
 
-    await message.reply_text(
+    await update.effective_message.reply_text(
         format_newcomer_inventory(
             year
         )
     )
 
 
-# =========================================================
-# SET PHYSICAL STOCK
-# =========================================================
-
 async def set_newcomer_stock_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Set the current physical stock count."""
 
     if not await check_care_permission(
         update
@@ -361,16 +617,11 @@ async def set_newcomer_stock_command(
 
     message = update.effective_message
 
-    if message is None:
-        return
-
     if not context.args:
 
         await message.reply_text(
             "Usage:\n"
-            "/setnewcomerstock QUANTITY [YEAR]\n\n"
-            "Example:\n"
-            "/setnewcomerstock 34"
+            "/setnewcomerstock QUANTITY [YEAR]"
         )
 
         return
@@ -392,10 +643,10 @@ async def set_newcomer_stock_command(
             quantity,
         )
 
-    except ValueError:
+    except ValueError as error:
 
         await message.reply_text(
-            "❌ Please enter a valid stock quantity and year."
+            f"❌ {error}"
         )
 
         return
@@ -408,15 +659,10 @@ async def set_newcomer_stock_command(
     )
 
 
-# =========================================================
-# ADD REPLENISHED STOCK
-# =========================================================
-
 async def add_newcomer_stock_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Add newly prepared newcomer packs."""
 
     if not await check_care_permission(
         update
@@ -425,16 +671,11 @@ async def add_newcomer_stock_command(
 
     message = update.effective_message
 
-    if message is None:
-        return
-
     if not context.args:
 
         await message.reply_text(
             "Usage:\n"
-            "/addnewcomerstock QUANTITY [YEAR]\n\n"
-            "Example:\n"
-            "/addnewcomerstock 20"
+            "/addnewcomerstock QUANTITY [YEAR]"
         )
 
         return
@@ -467,19 +708,15 @@ async def add_newcomer_stock_command(
     await message.reply_text(
         "✅ NEWCOMER STOCK REPLENISHED\n\n"
         f"Added: {quantity} packs\n"
-        f"Current stock: {inventory.current_stock}"
+        f"Current stock: "
+        f"{inventory.current_stock}"
     )
 
-
-# =========================================================
-# GIVE PACK LATER
-# =========================================================
 
 async def give_pack_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Mark an outstanding newcomer pack as given."""
 
     if not await check_care_permission(
         update
@@ -488,9 +725,6 @@ async def give_pack_command(
 
     message = update.effective_message
 
-    if message is None:
-        return
-
     name = " ".join(
         context.args
     ).strip()
@@ -498,8 +732,7 @@ async def give_pack_command(
     if not name:
 
         await message.reply_text(
-            "Usage:\n"
-            "/givepack NAME"
+            "Usage:\n/givepack NAME"
         )
 
         return
@@ -523,9 +756,7 @@ async def give_pack_command(
     if status == "already_given":
 
         await message.reply_text(
-            "⚠️ PACK ALREADY GIVEN\n\n"
-            f"{newcomer.display_name} has already "
-            "received a newcomer pack."
+            "⚠️ This newcomer already received a pack."
         )
 
         return
@@ -533,8 +764,7 @@ async def give_pack_command(
     if status == "no_stock":
 
         await message.reply_text(
-            "🚨 NO NEWCOMER PACKS AVAILABLE\n\n"
-            "Please replenish the inventory first."
+            "🚨 No newcomer packs available."
         )
 
         return
@@ -542,20 +772,15 @@ async def give_pack_command(
     await message.reply_text(
         "✅ NEWCOMER PACK GIVEN\n\n"
         f"👋 {newcomer.display_name}\n"
-        "🎁 Pack: Given\n"
-        f"📦 Packs remaining: {inventory.current_stock}"
+        f"📦 Packs remaining: "
+        f"{inventory.current_stock}"
     )
 
-
-# =========================================================
-# REMOVE / UNDO NEWCOMER
-# =========================================================
 
 async def remove_newcomer_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Safely remove a newcomer entered by mistake."""
 
     if not await check_care_permission(
         update
@@ -564,9 +789,6 @@ async def remove_newcomer_command(
 
     message = update.effective_message
 
-    if message is None:
-        return
-
     raw_text = " ".join(
         context.args
     ).strip()
@@ -574,10 +796,7 @@ async def remove_newcomer_command(
     if not raw_text:
 
         await message.reply_text(
-            "Usage:\n"
-            "/removenewcomer NAME\n\n"
-            "Example:\n"
-            "/removenewcomer John Tan"
+            "Usage:\n/removenewcomer NAME"
         )
 
         return
@@ -611,8 +830,7 @@ async def remove_newcomer_command(
     if newcomer is None:
 
         await message.reply_text(
-            "❌ NEWCOMER NOT FOUND\n\n"
-            f"No newcomer record was found for:\n{name}"
+            "❌ Newcomer not found."
         )
 
         return
@@ -620,18 +838,16 @@ async def remove_newcomer_command(
     if not confirmed:
 
         restore_text = (
-            "📦 1 pack will be restored to inventory."
+            "📦 1 pack will be restored."
             if newcomer.pack_given
-            else "📦 No stock adjustment will be made."
+            else "📦 No stock adjustment."
         )
 
         await message.reply_text(
             "⚠️ REMOVE NEWCOMER?\n\n"
             f"{format_newcomer_record(newcomer)}\n\n"
             f"{restore_text}\n\n"
-            "This should only be used for an incorrect "
-            "or test registration.\n\n"
-            "To confirm, send:\n\n"
+            "Confirm with:\n"
             f"/removenewcomer "
             f"{newcomer.display_name} | confirm"
         )
@@ -650,61 +866,314 @@ async def remove_newcomer_command(
     if status != "removed":
 
         await message.reply_text(
-            "❌ The newcomer could not be removed."
+            "❌ Could not remove newcomer."
         )
 
         return
 
-    lines = [
-        "✅ NEWCOMER REMOVED",
-        "",
-        f"👋 {removed_name}",
-        "",
-    ]
-
-    if pack_restored:
-
-        lines.append(
-            "📦 Newcomer pack restored to inventory."
-        )
-
-        if inventory is not None:
-
-            lines.append(
-                f"📦 Current stock: "
-                f"{inventory.current_stock}"
-            )
-
-    else:
-
-        lines.append(
-            "📦 No pack was restored."
-        )
-
-    lines.extend(
-        [
-            "",
-            "📝 If this person was already added to the "
-            "CARE Newcomer Master Sheet by mistake, "
-            "remember to correct the Master Sheet too.",
-        ]
+    text = (
+        "✅ NEWCOMER REMOVED\n\n"
+        f"👋 {removed_name}"
     )
 
-    await message.reply_text(
-        "\n".join(
-            lines
+    if (
+        pack_restored
+        and inventory is not None
+    ):
+
+        text += (
+            "\n\n📦 Pack restored."
+            f"\nCurrent stock: "
+            f"{inventory.current_stock}"
         )
+
+    await message.reply_text(
+        text
     )
 
 
 # =========================================================
-# REGISTER HANDLERS
+# ANNUAL PREP COMMAND
+# =========================================================
+
+async def newcomer_annual_prep_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+
+    if not await check_care_permission(
+        update
+    ):
+        return
+
+    if context.args:
+
+        try:
+            target_year = int(
+                context.args[0]
+            )
+
+        except ValueError:
+
+            await update.effective_message.reply_text(
+                "❌ Invalid year."
+            )
+
+            return
+
+    else:
+
+        target_year = (
+            get_current_newcomer_prep_year()
+        )
+
+    await update.effective_message.reply_text(
+        format_newcomer_annual_prep(
+            target_year
+        ),
+        reply_markup=(
+            build_newcomer_annual_prep_keyboard(
+                target_year
+            )
+        ),
+    )
+
+
+# =========================================================
+# MANUAL SCHEDULER CHECK
+# =========================================================
+
+async def run_newcomer_check_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+
+    if not await check_care_permission(
+        update
+    ):
+        return
+
+    count = (
+        await send_due_care_newcomer_reminders(
+            context
+        )
+    )
+
+    await update.effective_message.reply_text(
+        "👋 CARE Newcomer reminder check complete.\n\n"
+        f"{count} reminder(s) sent."
+    )
+
+
+# =========================================================
+# TEST REMINDER
+# =========================================================
+
+async def test_newcomer_reminder_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+
+    if not await check_care_permission(
+        update
+    ):
+        return
+
+    message = update.effective_message
+
+    if len(context.args) != 2:
+
+        await message.reply_text(
+            "Usage:\n"
+            "/testcarenewcomerreminder TYPE YEAR\n\n"
+            "Types:\n"
+            "open\n"
+            "nov15\n"
+            "dec1\n"
+            "dec15\n"
+            "dec25\n"
+            "midyear\n\n"
+            "Example:\n"
+            "/testcarenewcomerreminder open 2027"
+        )
+
+        return
+
+    reminder_type = (
+        context.args[0]
+        .strip()
+        .lower()
+    )
+
+    try:
+        year = int(
+            context.args[1]
+        )
+
+    except ValueError:
+
+        await message.reply_text(
+            "❌ Invalid year."
+        )
+
+        return
+
+    if reminder_type == "midyear":
+
+        text = build_midyear_stocktake_reminder(
+            year
+        )
+
+    else:
+
+        headings = {
+            "open": (
+                f"👋 {year} NEWCOMER PACK PREPARATION"
+            ),
+            "nov15": (
+                f"🔔 {year} NEWCOMER PACK "
+                "PREP PROGRESS CHECK"
+            ),
+            "dec1": (
+                f"🔔 {year} NEWCOMER PACK "
+                "PREP — DECEMBER CHECK"
+            ),
+            "dec15": (
+                f"⚠️ {year} NEWCOMER PACK "
+                "PREP — FINAL PACKING CHECK"
+            ),
+            "dec25": (
+                f"🚨 {year} NEWCOMER PACK "
+                "PREP — FINAL REMINDER"
+            ),
+        }
+
+        heading = headings.get(
+            reminder_type
+        )
+
+        if heading is None:
+
+            await message.reply_text(
+                "❌ Unknown reminder type."
+            )
+
+            return
+
+        text = build_newcomer_annual_reminder(
+            year,
+            heading,
+            full_checklist=(
+                reminder_type == "open"
+            ),
+        )
+
+        if text is None:
+
+            await message.reply_text(
+                f"✅ {year} newcomer pack preparation "
+                "is already completed."
+            )
+
+            return
+
+    sent = await send_care_newcomer_message(
+        context,
+        text,
+    )
+
+    if sent:
+
+        await message.reply_text(
+            "✅ Test reminder sent to "
+            "CARE Newcomer proxy topic."
+        )
+
+    else:
+
+        await message.reply_text(
+            "❌ Test reminder could not be sent."
+        )
+
+
+# =========================================================
+# ANNUAL CHECKLIST CALLBACKS
+# =========================================================
+
+async def handle_newcomer_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+
+    query = update.callback_query
+    user = update.effective_user
+
+    if query is None:
+        return
+
+    await query.answer()
+
+    user_id = (
+        user.id
+        if user
+        else None
+    )
+
+    if not is_care_leader(
+        user_id
+    ):
+
+        await query.edit_message_text(
+            "⛔ You do not have permission "
+            "to manage CARE Newcomers."
+        )
+
+        return
+
+    callback_data = (
+        query.data
+        or ""
+    )
+
+    if callback_data.startswith(
+        "carenewcomer:annualtoggle:"
+    ):
+
+        parts = callback_data.split(
+            ":"
+        )
+
+        target_year = int(
+            parts[2]
+        )
+
+        item_key = parts[3]
+
+        toggle_newcomer_annual_prep_item(
+            target_year,
+            item_key,
+        )
+
+        await query.edit_message_text(
+            format_newcomer_annual_prep(
+                target_year
+            ),
+            reply_markup=(
+                build_newcomer_annual_prep_keyboard(
+                    target_year
+                )
+            ),
+        )
+
+
+# =========================================================
+# REGISTER
 # =========================================================
 
 def register_care_newcomer_handlers(
     application: Application,
 ) -> None:
-    """Register CARE Newcomer commands."""
+    """Register CARE Newcomer system."""
 
     application.add_handler(
         CommandHandler(
@@ -760,4 +1229,64 @@ def register_care_newcomer_handlers(
             "removenewcomer",
             remove_newcomer_command,
         )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "carenewcomerprep",
+            newcomer_annual_prep_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "runcarenewcomercheck",
+            run_newcomer_check_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "testcarenewcomerreminder",
+            test_newcomer_reminder_command,
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            handle_newcomer_callback,
+            pattern=r"^carenewcomer:",
+        )
+    )
+
+    if not CARE_NEWCOMER_SCHEDULER_ENABLED:
+
+        logger.info(
+            "CARE Newcomer scheduler is disabled."
+        )
+
+        return
+
+    if application.job_queue is None:
+
+        logger.error(
+            "JobQueue unavailable. "
+            "CARE Newcomer scheduler not started."
+        )
+
+        return
+
+    application.job_queue.run_daily(
+        scheduled_care_newcomer_job,
+        time=time(
+            hour=10,
+            minute=0,
+            tzinfo=SINGAPORE_TIMEZONE,
+        ),
+        name="care_newcomer_daily_check",
+    )
+
+    logger.info(
+        "CARE Newcomer scheduler enabled: "
+        "daily at 10:00 AM Singapore time."
     )
