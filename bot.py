@@ -13,6 +13,9 @@ from modules.biweekly import register_biweekly_handlers
 from modules.care_birthdays import (
     register_care_birthday_handlers,
 )
+from modules.care_newcomers import (
+    register_care_newcomer_handlers,
+)
 from modules.control_panel import (
     register_control_panel_handlers,
 )
@@ -70,8 +73,15 @@ def main() -> None:
     )
 
     # CARE Birthday comes before the main control panel
-    # because it handles some specific CARE button callbacks.
+    # because it handles specific CARE Birthday callbacks.
     register_care_birthday_handlers(
+        application
+    )
+
+    # CARE Newcomers is registered before the main
+    # control panel so it can safely gain its own
+    # specific button callbacks later.
+    register_care_newcomer_handlers(
         application
     )
 

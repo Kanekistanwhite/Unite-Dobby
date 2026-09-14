@@ -33,6 +33,11 @@ from modules.events import (
 )
 from modules.members import list_members_command
 from modules.sunday import run_sunday_check_command
+from services.care_newcomer_service import (
+    format_newcomer_inventory,
+    format_newcomer_register,
+    get_singapore_today,
+)
 from services.permissions import is_approved_leader
 
 
@@ -63,6 +68,11 @@ CARE_PANEL_TEXT = (
 CARE_BIRTHDAY_PANEL_TEXT = (
     "🎂 CARE — BIRTHDAYS\n\n"
     "Manage the Youth Ministry birthday workflow."
+)
+
+CARE_NEWCOMER_PANEL_TEXT = (
+    "👋 CARE — NEWCOMERS\n\n"
+    "Manage newcomer registration and newcomer-pack stock."
 )
 
 
@@ -295,7 +305,7 @@ def build_care_menu() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 "👋 Newcomers",
-                callback_data="panel:care:comingsoon:newcomers",
+                callback_data="panel:care:newcomers",
             ),
             InlineKeyboardButton(
                 "🏆 Milestones",
@@ -357,12 +367,8 @@ def build_care_birthday_menu() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                "📦 Distribution",
-                callback_data="panel:care:birthday:comingsoon:distribution",
-            ),
-            InlineKeyboardButton(
-                "🔔 Send Reminder",
-                callback_data="panel:care:birthday:comingsoon:reminder",
+                "🎁 Annual Gift Prep",
+                callback_data="panel:care:birthday:annual",
             ),
         ],
         [
@@ -391,6 +397,84 @@ def build_care_birthday_back_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     "⬅️ Back to Birthdays",
                     callback_data="panel:care:birthdays",
+                )
+            ]
+        ]
+    )
+
+
+# ---------------------------------------------------------
+# CARE NEWCOMER MENU
+# ---------------------------------------------------------
+
+def build_care_newcomer_menu() -> InlineKeyboardMarkup:
+    """Create the CARE Newcomer control panel."""
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "➕ Register Newcomer",
+                callback_data="panel:care:newcomer:add",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🔎 Find Newcomer",
+                callback_data="panel:care:newcomer:find",
+            ),
+            InlineKeyboardButton(
+                "📋 Newcomer Register",
+                callback_data="panel:care:newcomer:register",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📦 Pack Inventory",
+                callback_data="panel:care:newcomer:stock",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🧮 Set Physical Stock",
+                callback_data="panel:care:newcomer:setstock",
+            ),
+            InlineKeyboardButton(
+                "➕ Add Replenishment",
+                callback_data="panel:care:newcomer:addstock",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🎁 Give Outstanding Pack",
+                callback_data="panel:care:newcomer:givepack",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Back to CARE",
+                callback_data="panel:workspace:care",
+            ),
+            InlineKeyboardButton(
+                "❌ Close",
+                callback_data="panel:close",
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+def build_care_newcomer_back_menu() -> InlineKeyboardMarkup:
+    """Create a back button for CARE Newcomers."""
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "⬅️ Back to Newcomers",
+                    callback_data="panel:care:newcomers",
                 )
             ]
         ]
@@ -884,6 +968,181 @@ async def handle_control_panel_callback(
         return
 
     # -----------------------------------------------------
+    # CARE — NEWCOMERS
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:newcomers":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            CARE_NEWCOMER_PANEL_TEXT,
+            reply_markup=build_care_newcomer_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — REGISTER NEWCOMER
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:newcomer:add":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "➕ REGISTER NEWCOMER\n\n"
+            "Send:\n\n"
+            "/addnewcomer NAME | INVITED BY\n\n"
+            "Example:\n"
+            "/addnewcomer John Tan | Gordon\n\n"
+            "Dobby will:\n"
+            "• Check whether the person is already registered\n"
+            "• Record their first visit\n"
+            "• Mark one newcomer pack as given\n"
+            "• Deduct one pack from inventory\n"
+            "• Remind you to add the name to the Master Sheet",
+            reply_markup=build_care_newcomer_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — FIND NEWCOMER
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:newcomer:find":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "🔎 FIND NEWCOMER\n\n"
+            "Send:\n\n"
+            "/findnewcomer NAME\n\n"
+            "Example:\n"
+            "/findnewcomer John Tan\n\n"
+            "Use this before giving a pack if you are unsure "
+            "whether someone has received one before.",
+            reply_markup=build_care_newcomer_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — NEWCOMER REGISTER
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:newcomer:register":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            format_newcomer_register(),
+            reply_markup=build_care_newcomer_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — PACK INVENTORY
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:newcomer:stock":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        year = get_singapore_today().year
+
+        await query.edit_message_text(
+            format_newcomer_inventory(
+                year
+            ),
+            reply_markup=build_care_newcomer_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — SET PHYSICAL STOCK
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:newcomer:setstock":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "🧮 SET PHYSICAL STOCK\n\n"
+            "Use this when Dobby's stock count needs to be "
+            "matched to the real number of packs on hand.\n\n"
+            "Send:\n\n"
+            "/setnewcomerstock QUANTITY [YEAR]\n\n"
+            "Example:\n"
+            "/setnewcomerstock 34",
+            reply_markup=build_care_newcomer_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — ADD REPLENISHED STOCK
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:newcomer:addstock":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "➕ ADD REPLENISHED STOCK\n\n"
+            "Use this after additional newcomer packs have "
+            "been prepared.\n\n"
+            "Send:\n\n"
+            "/addnewcomerstock QUANTITY [YEAR]\n\n"
+            "Example:\n"
+            "/addnewcomerstock 20",
+            reply_markup=build_care_newcomer_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — GIVE OUTSTANDING PACK
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:newcomer:givepack":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "🎁 GIVE OUTSTANDING PACK\n\n"
+            "Use this if a newcomer was registered when "
+            "there were no packs available, and receives "
+            "their pack later.\n\n"
+            "Send:\n\n"
+            "/givepack NAME\n\n"
+            "Example:\n"
+            "/givepack John Tan",
+            reply_markup=build_care_newcomer_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
     # CARE — OTHER FACTIONS
     # -----------------------------------------------------
 
@@ -896,7 +1155,6 @@ async def handle_control_panel_callback(
         )[-1]
 
         names = {
-            "newcomers": "👋 Newcomers",
             "milestones": "🏆 Milestones",
             "encouragement": "💌 Encouragement",
         }
@@ -910,9 +1168,10 @@ async def handle_control_panel_callback(
             f"{faction_name}\n\n"
             "🚧 This CARE workflow has not been "
             "built yet.\n\n"
-            "We are building CARE in this order:\n"
+            "Completed workflows:\n"
             "🎂 Birthdays\n"
-            "👋 Newcomers\n"
+            "👋 Newcomers\n\n"
+            "Coming next:\n"
             "🏆 Milestones\n"
             "💌 Encouragement",
             reply_markup=InlineKeyboardMarkup(
