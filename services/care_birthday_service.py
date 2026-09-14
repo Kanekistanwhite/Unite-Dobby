@@ -14,6 +14,7 @@ from sqlalchemy import (
 from database.database import SessionLocal
 from models.care_birthday_batch import CareBirthdayBatch
 from models.care_birthday_member import CareBirthdayMember
+from models.care_birthday_reminder import CareBirthdayReminder
 
 
 SINGAPORE_TIMEZONE = ZoneInfo(
@@ -118,7 +119,7 @@ CARE_BIRTHDAY_ROSTER = [
 ]
 
 
-CARE_BIRTHDAY_CHECKLIST = {
+CARE_BIRTHDAY_PREP_CHECKLIST = {
     "celebrants": (
         "celebrant_list_confirmed",
         "Celebrant list confirmed",
@@ -142,8 +143,40 @@ CARE_BIRTHDAY_CHECKLIST = {
 }
 
 
+CARE_BIRTHDAY_WORKFLOW_CHECKLIST = {
+    "announcement": (
+        "monthly_announcement_sent",
+        "Monthly birthday announcement sent",
+    ),
+    "celebration": (
+        "celebration_completed",
+        "Birthday celebration completed",
+    ),
+    "distribution": (
+        "distribution_completed",
+        "Distribution completed",
+    ),
+}
+
+
+CARE_BIRTHDAY_ALL_CHECKLIST = {
+    **CARE_BIRTHDAY_PREP_CHECKLIST,
+    **CARE_BIRTHDAY_WORKFLOW_CHECKLIST,
+}
+
+
+def get_singapore_now() -> datetime:
+    """Return current Singapore time."""
+
+    return datetime.now(
+        SINGAPORE_TIMEZONE
+    ).replace(
+        tzinfo=None
+    )
+
+
 def seed_care_birthday_roster() -> tuple[int, int]:
-    """Create or update the CARE Birthday roster."""
+    """Create or update CARE Birthday roster."""
 
     created = 0
     updated = 0
@@ -166,15 +199,13 @@ def seed_care_birthday_roster() -> tuple[int, int]:
             )
 
             if existing is None:
-                member = CareBirthdayMember(
-                    display_name=display_name,
-                    birthday_day=birthday_day,
-                    birthday_month=birthday_month,
-                    is_active=True,
-                )
-
                 session.add(
-                    member
+                    CareBirthdayMember(
+                        display_name=display_name,
+                        birthday_day=birthday_day,
+                        birthday_month=birthday_month,
+                        is_active=True,
+                    )
                 )
 
                 created += 1
@@ -194,7 +225,7 @@ def seed_care_birthday_roster() -> tuple[int, int]:
 def get_care_birthdays_for_month(
     month: int,
 ) -> list[CareBirthdayMember]:
-    """Return active CARE Birthday members for one month."""
+    """Return CARE Birthday celebrants for one month."""
 
     if month < 1 or month > 12:
         raise ValueError(
@@ -223,34 +254,45 @@ def get_first_sunday(
     year: int,
     month: int,
 ) -> date:
-    """Calculate the first Sunday of a month."""
+    """Calculate first Sunday of month."""
 
-    current_date = date(
+    first_day = date(
         year,
         month,
         1,
     )
 
     days_until_sunday = (
-        6 - current_date.weekday()
+        6 - first_day.weekday()
     ) % 7
 
-    return current_date + timedelta(
+    return first_day + timedelta(
         days=days_until_sunday
     )
 
 
-def get_current_care_birthday_period() -> tuple[int, int]:
-    """
-    Return the month currently being prepared.
+def get_next_month(
+    year: int,
+    month: int,
+) -> tuple[int, int]:
+    """Return the following year/month."""
 
-    On the 1st, Dobby still treats the current month as active.
-    From the 2nd onward, preparation moves to the next month.
-    """
+    if month == 12:
+        return (
+            year + 1,
+            1,
+        )
 
-    now = datetime.now(
-        SINGAPORE_TIMEZONE
+    return (
+        year,
+        month + 1,
     )
+
+
+def get_current_care_birthday_period() -> tuple[int, int]:
+    """Return the batch currently being prepared."""
+
+    now = get_singapore_now()
 
     if now.day == 1:
         return (
@@ -258,15 +300,9 @@ def get_current_care_birthday_period() -> tuple[int, int]:
             now.month,
         )
 
-    if now.month == 12:
-        return (
-            now.year + 1,
-            1,
-        )
-
-    return (
+    return get_next_month(
         now.year,
-        now.month + 1,
+        now.month,
     )
 
 
@@ -274,9 +310,8 @@ def get_or_create_care_birthday_batch(
     year: int,
     month: int,
 ) -> CareBirthdayBatch:
-    """Get or create one monthly CARE Birthday batch."""
+    """Get or create monthly CARE Birthday batch."""
 
-    # Validate year/month.
     date(
         year,
         month,
@@ -314,9 +349,9 @@ def toggle_care_birthday_checklist_item(
     month: int,
     item_key: str,
 ) -> CareBirthdayBatch:
-    """Toggle one preparation checklist item."""
+    """Toggle one CARE Birthday checklist item."""
 
-    checklist_item = CARE_BIRTHDAY_CHECKLIST.get(
+    checklist_item = CARE_BIRTHDAY_ALL_CHECKLIST.get(
         item_key
     )
 
@@ -368,11 +403,116 @@ def toggle_care_birthday_checklist_item(
         return batch
 
 
+def get_incomplete_preparation_items(
+    batch: CareBirthdayBatch,
+) -> list[str]:
+    """Return unfinished preparation checklist labels."""
+
+    incomplete = []
+
+    for (
+        field_name,
+        label,
+    ) in CARE_BIRTHDAY_PREP_CHECKLIST.values():
+
+        if not getattr(
+            batch,
+            field_name,
+        ):
+            incomplete.append(
+                label
+            )
+
+    return incomplete
+
+
+def has_care_birthday_reminder_been_sent(
+    year: int,
+    month: int,
+    reminder_type: str,
+) -> bool:
+    """Check whether a specific reminder was already sent."""
+
+    with SessionLocal() as session:
+        reminder = session.scalar(
+            select(CareBirthdayReminder).where(
+                CareBirthdayReminder.year == year,
+                CareBirthdayReminder.month == month,
+                CareBirthdayReminder.reminder_type
+                == reminder_type,
+            )
+        )
+
+        return reminder is not None
+
+
+def record_care_birthday_reminder_sent(
+    year: int,
+    month: int,
+    reminder_type: str,
+) -> None:
+    """Record successful CARE Birthday reminder."""
+
+    with SessionLocal() as session:
+
+        existing = session.scalar(
+            select(CareBirthdayReminder).where(
+                CareBirthdayReminder.year == year,
+                CareBirthdayReminder.month == month,
+                CareBirthdayReminder.reminder_type
+                == reminder_type,
+            )
+        )
+
+        if existing is not None:
+            return
+
+        session.add(
+            CareBirthdayReminder(
+                year=year,
+                month=month,
+                reminder_type=reminder_type,
+                sent_at=get_singapore_now(),
+            )
+        )
+
+        session.commit()
+
+
+def format_celebrant_list(
+    month: int,
+) -> str:
+    """Format all celebrants for one month."""
+
+    members = get_care_birthdays_for_month(
+        month
+    )
+
+    if not members:
+        return "• No registered celebrants"
+
+    lines = []
+
+    for member in members:
+        short_month = month_name[
+            member.birthday_month
+        ][:3]
+
+        lines.append(
+            f"• {member.display_name} — "
+            f"{member.birthday_day} {short_month}"
+        )
+
+    return "\n".join(
+        lines
+    )
+
+
 def format_care_birthday_month(
     year: int,
     month: int,
 ) -> str:
-    """Create a readable monthly birthday summary."""
+    """Format monthly CARE Birthday summary."""
 
     members = get_care_birthdays_for_month(
         month
@@ -386,43 +526,20 @@ def format_care_birthday_month(
     lines = [
         f"🎂 {month_name[month].upper()} {year} BIRTHDAYS",
         "",
+        format_celebrant_list(
+            month
+        ),
+        "",
+        f"👥 {len(members)} celebrant"
+        f"{'' if len(members) == 1 else 's'}",
+        "",
+        "🥳 Celebration:",
+        (
+            f"{celebration_date.strftime('%A')}, "
+            f"{celebration_date.day} "
+            f"{celebration_date.strftime('%B %Y')}"
+        ),
     ]
-
-    if not members:
-        lines.append(
-            "No celebrants are registered for this month."
-        )
-
-    else:
-        for member in members:
-            short_month = month_name[
-                member.birthday_month
-            ][:3]
-
-            lines.append(
-                f"• {member.display_name} — "
-                f"{member.birthday_day} {short_month}"
-            )
-
-        lines.extend(
-            [
-                "",
-                f"👥 {len(members)} celebrant"
-                f"{'' if len(members) == 1 else 's'}",
-            ]
-        )
-
-    lines.extend(
-        [
-            "",
-            "🥳 Celebration:",
-            (
-                f"{celebration_date.strftime('%A')}, "
-                f"{celebration_date.day} "
-                f"{celebration_date.strftime('%B %Y')}"
-            ),
-        ]
-    )
 
     return "\n".join(
         lines
@@ -433,7 +550,7 @@ def format_care_birthday_batch(
     year: int,
     month: int,
 ) -> str:
-    """Create the monthly CARE Birthday batch summary."""
+    """Format complete CARE Birthday batch."""
 
     members = get_care_birthdays_for_month(
         month
@@ -449,33 +566,30 @@ def format_care_birthday_batch(
         month,
     )
 
-    checklist_values = []
-
-    for (
-        item_key,
-        (
-            field_name,
-            label,
-        ),
-    ) in CARE_BIRTHDAY_CHECKLIST.items():
-
-        completed = getattr(
+    preparation_values = [
+        getattr(
             batch,
             field_name,
         )
-
-        checklist_values.append(
-            completed
+        for (
+            field_name,
+            label,
         )
+        in CARE_BIRTHDAY_PREP_CHECKLIST.values()
+    ]
 
-    if all(
-        checklist_values
+    if (
+        all(preparation_values)
+        and batch.monthly_announcement_sent
+        and batch.celebration_completed
+        and batch.distribution_completed
     ):
-        status = "🟢 Preparation Complete"
+        status = "✅ Month Completed"
 
-    elif any(
-        checklist_values
-    ):
+    elif batch.celebration_completed:
+        status = "🟠 Distribution Pending"
+
+    elif any(preparation_values):
         status = "🟡 In Progress"
 
     else:
@@ -487,53 +601,48 @@ def format_care_birthday_batch(
         status,
         "",
         "👥 Celebrants:",
+        format_celebrant_list(
+            month
+        ),
+        "",
+        f"👥 Total: {len(members)}",
+        "",
+        "📋 Preparation:",
     ]
 
-    if members:
-        for member in members:
-            short_month = month_name[
-                member.birthday_month
-            ][:3]
-
-            lines.append(
-                f"• {member.display_name} — "
-                f"{member.birthday_day} {short_month}"
-            )
-    else:
-        lines.append(
-            "• No registered celebrants"
-        )
-
-    lines.extend(
-        [
-            "",
-            f"👥 Total: {len(members)}",
-            "",
-            "📋 Preparation Checklist:",
-        ]
-    )
-
     for (
-        item_key,
-        (
-            field_name,
-            label,
-        ),
-    ) in CARE_BIRTHDAY_CHECKLIST.items():
+        field_name,
+        label,
+    ) in CARE_BIRTHDAY_PREP_CHECKLIST.values():
 
         completed = getattr(
             batch,
             field_name,
         )
 
-        icon = (
-            "✅"
-            if completed
-            else "⬜"
+        lines.append(
+            f"{'✅' if completed else '⬜'} {label}"
+        )
+
+    lines.extend(
+        [
+            "",
+            "🎉 Birthday Month:",
+        ]
+    )
+
+    for (
+        field_name,
+        label,
+    ) in CARE_BIRTHDAY_WORKFLOW_CHECKLIST.values():
+
+        completed = getattr(
+            batch,
+            field_name,
         )
 
         lines.append(
-            f"{icon} {label}"
+            f"{'✅' if completed else '⬜'} {label}"
         )
 
     lines.extend(

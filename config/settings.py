@@ -4,12 +4,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-# Locate the main Unite Dobby project folder.
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_FILE = BASE_DIR / ".env"
 
-# Load private settings from .env during local development.
-# Railway provides the same values as environment variables.
 load_dotenv(ENV_FILE)
 
 
@@ -117,7 +114,7 @@ BOT_TOKEN = require_environment_variable(
 
 
 # ---------------------------------------------------------
-# UNITE LEADER ACCESS
+# UNITE
 # ---------------------------------------------------------
 
 LEADER_USER_IDS = parse_user_ids(
@@ -129,7 +126,7 @@ LEADER_USER_IDS = parse_user_ids(
 
 
 # ---------------------------------------------------------
-# BIRTHDAY GREETINGS
+# UNITE BIRTHDAYS
 # ---------------------------------------------------------
 
 BIRTHDAY_CHAT_ID = read_optional_int(
@@ -145,10 +142,6 @@ BIRTHDAY_SCHEDULER_ENABLED = read_boolean(
     default=False,
 )
 
-
-# ---------------------------------------------------------
-# BIRTHDAY PLANNING
-# ---------------------------------------------------------
 
 BIRTHDAY_PLANNING_CHAT_ID = read_optional_int(
     "BIRTHDAY_PLANNING_CHAT_ID"
@@ -232,11 +225,20 @@ CARE_LEADER_USER_IDS = parse_user_ids(
     )
 )
 
+
+# ---------------------------------------------------------
+# CARE BIRTHDAYS
+# ---------------------------------------------------------
+
+CARE_BIRTHDAY_CHAT_ID = read_optional_int(
+    "CARE_BIRTHDAY_CHAT_ID"
+)
+
+CARE_BIRTHDAY_TOPIC_ID = read_optional_int(
+    "CARE_BIRTHDAY_TOPIC_ID"
+)
+
 CARE_BIRTHDAY_SCHEDULER_ENABLED = read_boolean(
     "CARE_BIRTHDAY_SCHEDULER_ENABLED",
     default=False,
 )
-
-# We will add the CARE Team reminder destination
-# and Youth Ministry announcement destination later,
-# after their Chat IDs / Topic IDs are confirmed.
