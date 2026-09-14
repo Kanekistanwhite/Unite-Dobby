@@ -23,6 +23,10 @@ from modules.biweekly import (
     list_biweekly_command,
     run_biweekly_check_command,
 )
+from modules.care_birthdays import (
+    is_care_leader,
+    setup_care_birthdays_command,
+)
 from modules.events import (
     events_schedule_command,
     is_events_leader,
@@ -51,6 +55,16 @@ EVENTS_PANEL_TEXT = (
     "Choose what you would like Dobby to do:"
 )
 
+CARE_PANEL_TEXT = (
+    "❤️ CARE TEAM\n\n"
+    "Which CARE faction would you like to manage?"
+)
+
+CARE_BIRTHDAY_PANEL_TEXT = (
+    "🎂 CARE — BIRTHDAYS\n\n"
+    "Manage the Youth Ministry birthday workflow."
+)
+
 
 # ---------------------------------------------------------
 # ACCESS
@@ -59,11 +73,12 @@ EVENTS_PANEL_TEXT = (
 def has_any_panel_access(
     user_id: int | None,
 ) -> bool:
-    """Check whether the user has access to any Dobby workspace."""
+    """Check whether the user has access to any workspace."""
 
     return (
         is_approved_leader(user_id)
         or is_events_leader(user_id)
+        or is_care_leader(user_id)
     )
 
 
@@ -74,31 +89,38 @@ def has_any_panel_access(
 def build_workspace_menu(
     user_id: int | None,
 ) -> InlineKeyboardMarkup:
-    """Build the workspace-selection menu."""
+    """Build the main Dobby workspace menu."""
 
     keyboard = []
 
-    workspace_row = []
-
     if is_approved_leader(user_id):
-        workspace_row.append(
-            InlineKeyboardButton(
-                "🏠 UNITE",
-                callback_data="panel:workspace:unite",
-            )
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "🏠 UNITE",
+                    callback_data="panel:workspace:unite",
+                )
+            ]
         )
 
     if is_events_leader(user_id):
-        workspace_row.append(
-            InlineKeyboardButton(
-                "🎉 EVENTS TEAM",
-                callback_data="panel:workspace:events",
-            )
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "🎉 EVENTS TEAM",
+                    callback_data="panel:workspace:events",
+                )
+            ]
         )
 
-    if workspace_row:
+    if is_care_leader(user_id):
         keyboard.append(
-            workspace_row
+            [
+                InlineKeyboardButton(
+                    "❤️ CARE TEAM",
+                    callback_data="panel:workspace:care",
+                )
+            ]
         )
 
     keyboard.append(
@@ -124,7 +146,7 @@ def build_workspace_menu(
 # ---------------------------------------------------------
 
 def build_unite_menu() -> InlineKeyboardMarkup:
-    """Create the UNITE leader control panel."""
+    """Create the UNITE control panel."""
 
     keyboard = [
         [
@@ -242,7 +264,7 @@ def build_events_menu() -> InlineKeyboardMarkup:
 
 
 def build_events_back_menu() -> InlineKeyboardMarkup:
-    """Create a back button for Events Team instructions."""
+    """Create a back button for Events."""
 
     return InlineKeyboardMarkup(
         [
@@ -257,13 +279,132 @@ def build_events_back_menu() -> InlineKeyboardMarkup:
 
 
 # ---------------------------------------------------------
-# UNITE CONFIRMATION MENU
+# CARE MENU
+# ---------------------------------------------------------
+
+def build_care_menu() -> InlineKeyboardMarkup:
+    """Create the CARE Team faction menu."""
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🎂 Birthdays",
+                callback_data="panel:care:birthdays",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "👋 Newcomers",
+                callback_data="panel:care:comingsoon:newcomers",
+            ),
+            InlineKeyboardButton(
+                "🏆 Milestones",
+                callback_data="panel:care:comingsoon:milestones",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "💌 Encouragement",
+                callback_data="panel:care:comingsoon:encouragement",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Back",
+                callback_data="panel:open",
+            ),
+            InlineKeyboardButton(
+                "❌ Close",
+                callback_data="panel:close",
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+# ---------------------------------------------------------
+# CARE BIRTHDAY MENU
+# ---------------------------------------------------------
+
+def build_care_birthday_menu() -> InlineKeyboardMarkup:
+    """Create the CARE Birthday control panel."""
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📅 View Birthday Month",
+                callback_data="panel:care:birthday:viewmonth",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🔄 Sync Birthday Roster",
+                callback_data="panel:care:birthday:sync",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📋 Current Batch",
+                callback_data="panel:care:birthday:comingsoon:batch",
+            ),
+            InlineKeyboardButton(
+                "✅ Update Checklist",
+                callback_data="panel:care:birthday:comingsoon:checklist",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📦 Distribution",
+                callback_data="panel:care:birthday:comingsoon:distribution",
+            ),
+            InlineKeyboardButton(
+                "🔔 Send Reminder",
+                callback_data="panel:care:birthday:comingsoon:reminder",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Back to CARE",
+                callback_data="panel:workspace:care",
+            ),
+            InlineKeyboardButton(
+                "❌ Close",
+                callback_data="panel:close",
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+def build_care_birthday_back_menu() -> InlineKeyboardMarkup:
+    """Create a back button for CARE Birthday."""
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "⬅️ Back to Birthdays",
+                    callback_data="panel:care:birthdays",
+                )
+            ]
+        ]
+    )
+
+
+# ---------------------------------------------------------
+# UNITE CONFIRMATION
 # ---------------------------------------------------------
 
 def build_confirmation_menu(
     action_name: str,
 ) -> InlineKeyboardMarkup:
-    """Create confirmation buttons for a UNITE action."""
+    """Create confirmation buttons for UNITE actions."""
 
     keyboard = [
         [
@@ -328,7 +469,7 @@ async def menu_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Open Dobby's workspace control panel."""
+    """Open Dobby's control panel."""
 
     message = update.effective_message
     user = update.effective_user
@@ -432,7 +573,7 @@ async def run_unite_display_action(
     context: ContextTypes.DEFAULT_TYPE,
     action_name: str,
 ) -> None:
-    """Run an information command for UNITE."""
+    """Run a UNITE information action."""
 
     query = update.callback_query
     user = update.effective_user
@@ -501,7 +642,7 @@ async def show_events_schedule(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Show the Events Team schedule."""
+    """Show Events Team schedule."""
 
     query = update.callback_query
     user = update.effective_user
@@ -543,7 +684,7 @@ async def handle_control_panel_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Handle all Dobby control-panel button presses."""
+    """Handle all Dobby control-panel buttons."""
 
     query = update.callback_query
     user = update.effective_user
@@ -574,7 +715,7 @@ async def handle_control_panel_callback(
     )
 
     # -----------------------------------------------------
-    # MAIN MENU
+    # MAIN
     # -----------------------------------------------------
 
     if callback_data == "panel:open":
@@ -586,10 +727,6 @@ async def handle_control_panel_callback(
         )
         return
 
-    # -----------------------------------------------------
-    # CLOSE
-    # -----------------------------------------------------
-
     if callback_data == "panel:close":
         await query.edit_message_text(
             "✅ Dobby's control panel has been closed.\n\n"
@@ -598,7 +735,7 @@ async def handle_control_panel_callback(
         return
 
     # -----------------------------------------------------
-    # WORKSPACE: UNITE
+    # UNITE
     # -----------------------------------------------------
 
     if callback_data == "panel:workspace:unite":
@@ -619,7 +756,7 @@ async def handle_control_panel_callback(
         return
 
     # -----------------------------------------------------
-    # WORKSPACE: EVENTS TEAM
+    # EVENTS
     # -----------------------------------------------------
 
     if callback_data == "panel:workspace:events":
@@ -640,19 +777,168 @@ async def handle_control_panel_callback(
         return
 
     # -----------------------------------------------------
+    # CARE
+    # -----------------------------------------------------
+
+    if callback_data == "panel:workspace:care":
+
+        if not is_care_leader(
+            user_id
+        ):
+            await query.edit_message_text(
+                "⛔ You do not have permission "
+                "to manage CARE Team."
+            )
+            return
+
+        await query.edit_message_text(
+            CARE_PANEL_TEXT,
+            reply_markup=build_care_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — BIRTHDAYS
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:birthdays":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            CARE_BIRTHDAY_PANEL_TEXT,
+            reply_markup=build_care_birthday_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — VIEW BIRTHDAY MONTH
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:birthday:viewmonth":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "📅 VIEW BIRTHDAY MONTH\n\n"
+            "Send:\n\n"
+            "/carebirthdaymonth MM-YYYY\n\n"
+            "Example:\n"
+            "/carebirthdaymonth 10-2026\n\n"
+            "Dobby will show:\n"
+            "• All birthday celebrants\n"
+            "• Their birthday dates\n"
+            "• Number of celebrants\n"
+            "• First-Sunday celebration date",
+            reply_markup=build_care_birthday_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — SYNC BIRTHDAY ROSTER
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:birthday:sync":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "⏳ Syncing CARE Birthday roster..."
+        )
+
+        await setup_care_birthdays_command(
+            update,
+            context,
+        )
+
+        await query.edit_message_text(
+            CARE_BIRTHDAY_PANEL_TEXT,
+            reply_markup=build_care_birthday_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — COMING SOON BIRTHDAY FEATURES
+    # -----------------------------------------------------
+
+    if callback_data.startswith(
+        "panel:care:birthday:comingsoon:"
+    ):
+
+        await query.edit_message_text(
+            "🚧 This CARE Birthday feature "
+            "is being built next.\n\n"
+            "The birthday roster and monthly "
+            "celebrant view are already working.",
+            reply_markup=build_care_birthday_back_menu(),
+        )
+        return
+
+    # -----------------------------------------------------
+    # CARE — OTHER FACTIONS
+    # -----------------------------------------------------
+
+    if callback_data.startswith(
+        "panel:care:comingsoon:"
+    ):
+
+        faction = callback_data.split(
+            ":"
+        )[-1]
+
+        names = {
+            "newcomers": "👋 Newcomers",
+            "milestones": "🏆 Milestones",
+            "encouragement": "💌 Encouragement",
+        }
+
+        faction_name = names.get(
+            faction,
+            "CARE faction",
+        )
+
+        await query.edit_message_text(
+            f"{faction_name}\n\n"
+            "🚧 This CARE workflow has not been "
+            "built yet.\n\n"
+            "We are building CARE in this order:\n"
+            "🎂 Birthdays\n"
+            "👋 Newcomers\n"
+            "🏆 Milestones\n"
+            "💌 Encouragement",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "⬅️ Back to CARE",
+                            callback_data="panel:workspace:care",
+                        )
+                    ]
+                ]
+            ),
+        )
+        return
+
+    # -----------------------------------------------------
     # UNITE CONFIRMATIONS
     # -----------------------------------------------------
 
     if callback_data.startswith(
         "panel:confirm:"
     ):
+
         if not is_approved_leader(
             user_id
         ):
-            await query.edit_message_text(
-                "⛔ You do not have permission "
-                "to manage UNITE."
-            )
             return
 
         action_name = callback_data.split(
@@ -670,13 +956,10 @@ async def handle_control_panel_callback(
         )
         return
 
-    # -----------------------------------------------------
-    # RUN UNITE ACTION
-    # -----------------------------------------------------
-
     if callback_data.startswith(
         "panel:run:"
     ):
+
         action_name = callback_data.split(
             ":",
             maxsplit=2,
@@ -689,13 +972,10 @@ async def handle_control_panel_callback(
         )
         return
 
-    # -----------------------------------------------------
-    # UNITE INFORMATION
-    # -----------------------------------------------------
-
     if callback_data.startswith(
         "panel:show:"
     ):
+
         action_name = callback_data.split(
             ":",
             maxsplit=2,
@@ -738,7 +1018,7 @@ async def handle_control_panel_callback(
             "Example:\n"
             "/addeventmeeting 15-09-2026 20:00 | "
             "September Events Meeting\n\n"
-            "🔔 Dobby will automatically remind the team:\n"
+            "🔔 Automatic reminders:\n"
             "• 1 week before at 10:00 AM\n"
             "• 1 day before at 10:00 AM",
             reply_markup=build_events_back_menu(),
@@ -763,7 +1043,7 @@ async def handle_control_panel_callback(
             "Example:\n"
             "/addeventdeadline 25-09-2026 | "
             "Finalise Event Proposal\n\n"
-            "🔔 Dobby will automatically remind the team:\n"
+            "🔔 Automatic reminders:\n"
             "• 3 days before at 10:00 AM\n"
             "• Deadline day at 10:00 AM",
             reply_markup=build_events_back_menu(),
@@ -771,7 +1051,7 @@ async def handle_control_panel_callback(
         return
 
     # -----------------------------------------------------
-    # EVENTS — SEND MANUAL REMINDER
+    # EVENTS — REMINDER
     # -----------------------------------------------------
 
     if callback_data == "panel:events:reminder":
@@ -783,22 +1063,18 @@ async def handle_control_panel_callback(
 
         await query.edit_message_text(
             "🔔 SEND MEETING REMINDER\n\n"
-            "First press 📋 View Schedule to find "
-            "the meeting ID.\n\n"
+            "First check 📋 View Schedule.\n\n"
             "Then send:\n\n"
             "/sendeventreminder ID\n\n"
             "Example:\n"
             "/sendeventreminder 3\n\n"
-            "Dobby will immediately send a reminder "
-            "to the Events Team group.\n\n"
-            "✅ This does NOT affect the automatic "
-            "1-week or 1-day reminders.",
+            "This does not affect automatic reminders.",
             reply_markup=build_events_back_menu(),
         )
         return
 
     # -----------------------------------------------------
-    # EVENTS — COMPLETE DEADLINE
+    # EVENTS — COMPLETE
     # -----------------------------------------------------
 
     if callback_data == "panel:events:complete":
@@ -810,20 +1086,16 @@ async def handle_control_panel_callback(
 
         await query.edit_message_text(
             "✅ COMPLETE DEADLINE\n\n"
-            "First press 📋 View Schedule to find "
-            "the deadline ID.\n\n"
-            "Then send:\n\n"
+            "Send:\n\n"
             "/completeevent ID\n\n"
             "Example:\n"
-            "/completeevent 2\n\n"
-            "Once completed, Dobby will stop sending "
-            "reminders for that deadline.",
+            "/completeevent 2",
             reply_markup=build_events_back_menu(),
         )
         return
 
     # -----------------------------------------------------
-    # EVENTS — CANCEL ITEM
+    # EVENTS — CANCEL
     # -----------------------------------------------------
 
     if callback_data == "panel:events:cancel":
@@ -835,24 +1107,20 @@ async def handle_control_panel_callback(
 
         await query.edit_message_text(
             "❌ CANCEL EVENTS ITEM\n\n"
-            "First press 📋 View Schedule to find "
-            "the meeting or deadline ID.\n\n"
-            "Then send:\n\n"
+            "Send:\n\n"
             "/cancelevent ID\n\n"
             "Example:\n"
-            "/cancelevent 3\n\n"
-            "Cancelled items will no longer receive reminders.",
+            "/cancelevent 3",
             reply_markup=build_events_back_menu(),
         )
         return
 
     # -----------------------------------------------------
-    # UNKNOWN CALLBACK
+    # UNKNOWN
     # -----------------------------------------------------
 
     await query.edit_message_text(
-        "❌ That control-panel option is no longer available.\n\n"
-        "Please reopen the menu.",
+        "❌ That control-panel option is no longer available.",
         reply_markup=build_workspace_menu(
             user_id
         ),
