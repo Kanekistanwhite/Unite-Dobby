@@ -13,6 +13,9 @@ from modules.biweekly import register_biweekly_handlers
 from modules.care_birthdays import (
     register_care_birthday_handlers,
 )
+from modules.care_encouragement import (
+    register_care_encouragement_handlers,
+)
 from modules.care_milestones import (
     register_care_milestone_handlers,
 )
@@ -75,8 +78,8 @@ def main() -> None:
         application
     )
 
-    # CARE-specific handlers come before the broad
-    # control-panel callback handler.
+    # CARE-specific handlers are registered before
+    # the broad control-panel callback handler.
     register_care_birthday_handlers(
         application
     )
@@ -86,6 +89,10 @@ def main() -> None:
     )
 
     register_care_milestone_handlers(
+        application
+    )
+
+    register_care_encouragement_handlers(
         application
     )
 

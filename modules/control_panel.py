@@ -33,6 +33,13 @@ from modules.events import (
 )
 from modules.members import list_members_command
 from modules.sunday import run_sunday_check_command
+
+from services.care_encouragement_service import (
+    format_active_encouragement_batches,
+    format_encouragement_annual_plan,
+    format_encouragement_month,
+    get_singapore_today as get_encouragement_today,
+)
 from services.care_milestone_service import (
     format_active_milestones,
     format_milestone_annual_plan,
@@ -88,6 +95,11 @@ CARE_MILESTONE_PANEL_TEXT = (
     "Manage milestone celebrations, gifts and cards."
 )
 
+CARE_ENCOURAGEMENT_PANEL_TEXT = (
+    "💌 CARE — ENCOURAGEMENT\n\n"
+    "Manage encouragement periods, packs, cards and packing."
+)
+
 
 # ---------------------------------------------------------
 # ACCESS
@@ -96,7 +108,7 @@ CARE_MILESTONE_PANEL_TEXT = (
 def has_any_panel_access(
     user_id: int | None,
 ) -> bool:
-    """Check whether the user has access to any workspace."""
+    """Check whether user has access to any workspace."""
 
     return (
         is_approved_leader(user_id)
@@ -112,7 +124,7 @@ def has_any_panel_access(
 def build_workspace_menu(
     user_id: int | None,
 ) -> InlineKeyboardMarkup:
-    """Build the main Dobby workspace menu."""
+    """Build main Dobby workspace menu."""
 
     keyboard = []
 
@@ -172,7 +184,7 @@ def build_workspace_menu(
 # ---------------------------------------------------------
 
 def build_unite_menu() -> InlineKeyboardMarkup:
-    """Create the UNITE control panel."""
+    """Create UNITE control panel."""
 
     keyboard = [
         [
@@ -237,7 +249,7 @@ def build_unite_menu() -> InlineKeyboardMarkup:
 # ---------------------------------------------------------
 
 def build_events_menu() -> InlineKeyboardMarkup:
-    """Create the Events Team control panel."""
+    """Create Events Team control panel."""
 
     keyboard = [
         [
@@ -290,7 +302,7 @@ def build_events_menu() -> InlineKeyboardMarkup:
 
 
 def build_events_back_menu() -> InlineKeyboardMarkup:
-    """Create a back button for Events."""
+    """Create Events back button."""
 
     return InlineKeyboardMarkup(
         [
@@ -331,7 +343,7 @@ def build_care_menu() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 "💌 Encouragement",
-                callback_data="panel:care:comingsoon:encouragement",
+                callback_data="panel:care:encouragement",
             ),
         ],
         [
@@ -405,7 +417,6 @@ def build_care_birthday_menu() -> InlineKeyboardMarkup:
 
 
 def build_care_birthday_back_menu() -> InlineKeyboardMarkup:
-    """Create Birthday back button."""
 
     return InlineKeyboardMarkup(
         [
@@ -495,7 +506,6 @@ def build_care_newcomer_menu() -> InlineKeyboardMarkup:
 
 
 def build_care_newcomer_back_menu() -> InlineKeyboardMarkup:
-    """Create Newcomer back button."""
 
     return InlineKeyboardMarkup(
         [
@@ -577,7 +587,6 @@ def build_care_milestone_menu() -> InlineKeyboardMarkup:
 
 
 def build_care_milestone_back_menu() -> InlineKeyboardMarkup:
-    """Create Milestone back button."""
 
     return InlineKeyboardMarkup(
         [
@@ -592,13 +601,91 @@ def build_care_milestone_back_menu() -> InlineKeyboardMarkup:
 
 
 # ---------------------------------------------------------
+# CARE ENCOURAGEMENT MENU
+# ---------------------------------------------------------
+
+def build_care_encouragement_menu() -> InlineKeyboardMarkup:
+    """Create CARE Encouragement control panel."""
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "➕ Add Encouragement Period",
+                callback_data="panel:care:encouragement:add",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📋 Active Batches",
+                callback_data="panel:care:encouragement:active",
+            ),
+            InlineKeyboardButton(
+                "🗓 This Month",
+                callback_data="panel:care:encouragement:month",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "👥 Manage Recipients",
+                callback_data="panel:care:encouragement:recipients",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "📦 Set Packing Date",
+                callback_data="panel:care:encouragement:packing",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🎁 Annual Preparation",
+                callback_data="panel:care:encouragement:annual",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ Cancel Batch",
+                callback_data="panel:care:encouragement:cancel",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Back to CARE",
+                callback_data="panel:workspace:care",
+            ),
+            InlineKeyboardButton(
+                "❌ Close",
+                callback_data="panel:close",
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+def build_care_encouragement_back_menu() -> InlineKeyboardMarkup:
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "⬅️ Back to Encouragement",
+                    callback_data="panel:care:encouragement",
+                )
+            ]
+        ]
+    )
+
+
+# ---------------------------------------------------------
 # UNITE CONFIRMATION
 # ---------------------------------------------------------
 
 def build_confirmation_menu(
     action_name: str,
 ) -> InlineKeyboardMarkup:
-    """Create UNITE confirmation buttons."""
 
     return InlineKeyboardMarkup(
         [
@@ -619,7 +706,6 @@ def build_confirmation_menu(
 def get_confirmation_text(
     action_name: str,
 ) -> str:
-    """Return UNITE confirmation text."""
 
     messages = {
         "sunday": (
@@ -658,7 +744,6 @@ async def menu_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Open Dobby control panel."""
 
     message = update.effective_message
     user = update.effective_user
@@ -977,6 +1062,11 @@ async def handle_control_panel_callback(
 
     if callback_data == "panel:care:birthday:viewmonth":
 
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
         await query.edit_message_text(
             "📅 VIEW BIRTHDAY MONTH\n\n"
             "Send:\n"
@@ -989,6 +1079,11 @@ async def handle_control_panel_callback(
         return
 
     if callback_data == "panel:care:birthday:sync":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
 
         await query.edit_message_text(
             "⏳ Syncing CARE Birthday roster..."
@@ -1011,8 +1106,8 @@ async def handle_control_panel_callback(
     ):
 
         await query.edit_message_text(
-            "🚧 This Birthday option is managed by "
-            "the CARE Birthday workflow.",
+            "🎂 CARE Birthday workflow\n\n"
+            "Use the Birthday checklist to manage this batch.",
             reply_markup=build_care_birthday_back_menu(),
         )
 
@@ -1023,6 +1118,11 @@ async def handle_control_panel_callback(
     # =====================================================
 
     if callback_data == "panel:care:newcomers":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
 
         await query.edit_message_text(
             CARE_NEWCOMER_PANEL_TEXT,
@@ -1120,10 +1220,9 @@ async def handle_control_panel_callback(
 
         await query.edit_message_text(
             "↩️ REMOVE NEWCOMER\n\n"
-            "Use this only for an incorrect or test entry.\n\n"
             "Send:\n"
             "/removenewcomer NAME\n\n"
-            "Dobby will ask for confirmation before removing.",
+            "Dobby will ask for confirmation first.",
             reply_markup=build_care_newcomer_back_menu(),
         )
 
@@ -1137,11 +1236,7 @@ async def handle_control_panel_callback(
 
         await query.edit_message_text(
             "🎁 ANNUAL NEWCOMER PACK PREP\n\n"
-            f"Current preparation year: {target_year}\n\n"
-            "Send:\n"
-            f"/carenewcomerprep {target_year}\n\n"
-            "This opens the interactive 50-pack "
-            "preparation checklist.",
+            f"Send:\n/carenewcomerprep {target_year}",
             reply_markup=build_care_newcomer_back_menu(),
         )
 
@@ -1153,6 +1248,11 @@ async def handle_control_panel_callback(
 
     if callback_data == "panel:care:milestones":
 
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
         await query.edit_message_text(
             CARE_MILESTONE_PANEL_TEXT,
             reply_markup=build_care_milestone_menu(),
@@ -1160,37 +1260,22 @@ async def handle_control_panel_callback(
 
         return
 
-    # -----------------------------------------------------
-    # ADD MILESTONE
-    # -----------------------------------------------------
-
     if callback_data == "panel:care:milestone:add":
 
         await query.edit_message_text(
             "➕ ADD MILESTONE\n\n"
-            "Send:\n\n"
+            "Send:\n"
             "/addmilestone NAME | TYPE | DATE\n\n"
-            "Exact date example:\n"
+            "Example:\n"
             "/addmilestone John Tan | university | "
             "18-05-2027\n\n"
-            "Month-only example:\n"
+            "Month only:\n"
             "/addmilestone John Tan | university | "
-            "05-2027\n\n"
-            "Types:\n"
-            "🎓 secondary\n"
-            "🎓 polytechnic\n"
-            "🎓 jc\n"
-            "🎓 university\n"
-            "✝️ baptism\n"
-            "🪖 ord",
+            "05-2027",
             reply_markup=build_care_milestone_back_menu(),
         )
 
         return
-
-    # -----------------------------------------------------
-    # ACTIVE MILESTONES
-    # -----------------------------------------------------
 
     if callback_data == "panel:care:milestone:active":
 
@@ -1200,10 +1285,6 @@ async def handle_control_panel_callback(
         )
 
         return
-
-    # -----------------------------------------------------
-    # THIS MONTH
-    # -----------------------------------------------------
 
     if callback_data == "panel:care:milestone:month":
 
@@ -1219,10 +1300,6 @@ async def handle_control_panel_callback(
 
         return
 
-    # -----------------------------------------------------
-    # YEAR TRACKER
-    # -----------------------------------------------------
-
     if callback_data == "panel:care:milestone:year":
 
         today = get_milestone_today()
@@ -1236,16 +1313,10 @@ async def handle_control_panel_callback(
 
         return
 
-    # -----------------------------------------------------
-    # ANNUAL PLANNING
-    # -----------------------------------------------------
-
     if callback_data == "panel:care:milestone:plan":
 
-        today = get_milestone_today()
-
         target_year = (
-            today.year + 1
+            get_milestone_today().year + 1
         )
 
         await query.edit_message_text(
@@ -1253,42 +1324,27 @@ async def handle_control_panel_callback(
                 target_year
             )
             + "\n\n"
-            "To open the interactive lookout checklist:\n"
+            f"Open checklist:\n"
             f"/milestoneplan {target_year}\n\n"
-            "To decide a gift:\n"
-            "/setmilestonegift YEAR | TYPE | GIFT\n\n"
-            "Example:\n"
-            f"/setmilestonegift {target_year} | baptism | "
-            "Personalised Bible",
+            "Set gift:\n"
+            "/setmilestonegift YEAR | TYPE | GIFT",
             reply_markup=build_care_milestone_back_menu(),
         )
 
         return
-
-    # -----------------------------------------------------
-    # UPDATE DATE
-    # -----------------------------------------------------
 
     if callback_data == "panel:care:milestone:updatedate":
 
         await query.edit_message_text(
             "✏️ UPDATE MILESTONE DATE\n\n"
-            "Use this when you initially only knew "
-            "the month and later receive the exact date.\n\n"
             "Send:\n"
             "/updatemilestonedate ID | DD-MM-YYYY\n\n"
             "Example:\n"
-            "/updatemilestonedate 3 | 18-05-2027\n\n"
-            "Once the exact date is added, Dobby can "
-            "calculate the 2-week reminder.",
+            "/updatemilestonedate 3 | 18-05-2027",
             reply_markup=build_care_milestone_back_menu(),
         )
 
         return
-
-    # -----------------------------------------------------
-    # HISTORY
-    # -----------------------------------------------------
 
     if callback_data == "panel:care:milestone:history":
 
@@ -1303,52 +1359,164 @@ async def handle_control_panel_callback(
 
         return
 
-    # -----------------------------------------------------
-    # CANCEL MILESTONE
-    # -----------------------------------------------------
-
     if callback_data == "panel:care:milestone:cancel":
 
         await query.edit_message_text(
             "❌ CANCEL MILESTONE\n\n"
-            "First check the milestone ID using:\n"
-            "/activemilestones\n\n"
-            "Then send:\n"
-            "/cancelmilestone ID confirm\n\n"
-            "Example:\n"
-            "/cancelmilestone 3 confirm",
+            "Send:\n"
+            "/cancelmilestone ID confirm",
             reply_markup=build_care_milestone_back_menu(),
         )
 
         return
 
     # =====================================================
-    # CARE — ENCOURAGEMENT
+    # CARE ENCOURAGEMENT
     # =====================================================
 
-    if callback_data.startswith(
-        "panel:care:comingsoon:"
-    ):
+    if callback_data == "panel:care:encouragement":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
 
         await query.edit_message_text(
-            "💌 ENCOURAGEMENT\n\n"
-            "🚧 This CARE workflow has not been built yet.\n\n"
-            "Completed:\n"
-            "✅ Birthdays\n"
-            "✅ Newcomers\n"
-            "✅ Milestones\n\n"
-            "Next:\n"
-            "💌 Encouragement",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "⬅️ Back to CARE",
-                            callback_data="panel:workspace:care",
-                        )
-                    ]
-                ]
+            CARE_ENCOURAGEMENT_PANEL_TEXT,
+            reply_markup=build_care_encouragement_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # ADD ENCOURAGEMENT PERIOD
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:encouragement:add":
+
+        await query.edit_message_text(
+            "➕ ADD ENCOURAGEMENT PERIOD\n\n"
+            "Send:\n"
+            "/addencouragement TITLE | PERIOD\n\n"
+            "Month-only example:\n"
+            "/addencouragement Mid-Year Exams | 06-2027\n\n"
+            "Date-range example:\n"
+            "/addencouragement O Level Exams | "
+            "20-10-2027 to 10-11-2027",
+            reply_markup=build_care_encouragement_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # ACTIVE BATCHES
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:encouragement:active":
+
+        await query.edit_message_text(
+            format_active_encouragement_batches(),
+            reply_markup=build_care_encouragement_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # THIS MONTH
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:encouragement:month":
+
+        today = get_encouragement_today()
+
+        await query.edit_message_text(
+            format_encouragement_month(
+                today.year,
+                today.month,
             ),
+            reply_markup=build_care_encouragement_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # MANAGE RECIPIENTS
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:encouragement:recipients":
+
+        await query.edit_message_text(
+            "👥 MANAGE RECIPIENTS\n\n"
+            "Add someone:\n"
+            "/addencouragementrecipient BATCH_ID | NAME\n\n"
+            "View batch recipients:\n"
+            "/encouragementrecipients BATCH_ID\n\n"
+            "Open one person's checklist:\n"
+            "/encouragementrecipient RECIPIENT_ID\n\n"
+            "Remove someone:\n"
+            "/removeencouragementrecipient "
+            "RECIPIENT_ID confirm",
+            reply_markup=build_care_encouragement_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # SET PACKING DATE
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:encouragement:packing":
+
+        await query.edit_message_text(
+            "📦 SET PACKING DATE\n\n"
+            "Send:\n"
+            "/setencouragementpacking "
+            "BATCH_ID | DD-MM-YYYY\n\n"
+            "Example:\n"
+            "/setencouragementpacking 2 | 12-06-2027\n\n"
+            "Dobby will remind CARE:\n"
+            "• 1 week before\n"
+            "• 1 day before",
+            reply_markup=build_care_encouragement_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # ANNUAL PREPARATION
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:encouragement:annual":
+
+        target_year = (
+            get_encouragement_today().year + 1
+        )
+
+        await query.edit_message_text(
+            format_encouragement_annual_plan(
+                target_year
+            )
+            + "\n\n"
+            "Open the interactive checklist:\n"
+            f"/encouragementplan {target_year}",
+            reply_markup=build_care_encouragement_back_menu(),
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # CANCEL BATCH
+    # -----------------------------------------------------
+
+    if callback_data == "panel:care:encouragement:cancel":
+
+        await query.edit_message_text(
+            "❌ CANCEL ENCOURAGEMENT BATCH\n\n"
+            "First view active batches:\n"
+            "/activeencouragement\n\n"
+            "Then send:\n"
+            "/cancelencouragement BATCH_ID confirm",
+            reply_markup=build_care_encouragement_back_menu(),
         )
 
         return

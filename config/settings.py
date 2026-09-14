@@ -36,17 +36,20 @@ def parse_user_ids(
     user_ids: set[int] = set()
 
     for item in value.split(","):
+
         cleaned_item = item.strip()
 
         if not cleaned_item:
             continue
 
         try:
+
             user_ids.add(
                 int(cleaned_item)
             )
 
         except ValueError as error:
+
             raise RuntimeError(
                 "User ID variables must contain only Telegram "
                 "user IDs separated by commas."
@@ -69,9 +72,13 @@ def read_optional_int(
         return None
 
     try:
-        return int(value)
+
+        return int(
+            value
+        )
 
     except ValueError as error:
+
         raise RuntimeError(
             f"{variable_name} must be a valid integer."
         ) from error
@@ -99,6 +106,7 @@ def read_boolean(
         "true",
         "false",
     }:
+
         raise RuntimeError(
             f"{variable_name} must be either true or false."
         )
@@ -277,5 +285,23 @@ CARE_MILESTONE_TOPIC_ID = read_optional_int(
 
 CARE_MILESTONE_SCHEDULER_ENABLED = read_boolean(
     "CARE_MILESTONE_SCHEDULER_ENABLED",
+    default=False,
+)
+
+
+# ---------------------------------------------------------
+# CARE ENCOURAGEMENT
+# ---------------------------------------------------------
+
+CARE_ENCOURAGEMENT_CHAT_ID = read_optional_int(
+    "CARE_ENCOURAGEMENT_CHAT_ID"
+)
+
+CARE_ENCOURAGEMENT_TOPIC_ID = read_optional_int(
+    "CARE_ENCOURAGEMENT_TOPIC_ID"
+)
+
+CARE_ENCOURAGEMENT_SCHEDULER_ENABLED = read_boolean(
+    "CARE_ENCOURAGEMENT_SCHEDULER_ENABLED",
     default=False,
 )

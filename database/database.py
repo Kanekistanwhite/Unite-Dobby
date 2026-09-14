@@ -73,6 +73,12 @@ def init_database() -> None:
     import models.care_milestone_annual_plan  # noqa: F401
     import models.care_milestone_reminder  # noqa: F401
 
+    # CARE Encouragement
+    import models.care_encouragement_annual_plan  # noqa: F401
+    import models.care_encouragement_batch  # noqa: F401
+    import models.care_encouragement_recipient  # noqa: F401
+    import models.care_encouragement_reminder  # noqa: F401
+
     import models.events_item  # noqa: F401
     import models.member  # noqa: F401
 
