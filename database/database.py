@@ -56,6 +56,7 @@ def init_database() -> None:
     """Create all database tables that do not already exist."""
 
     import models.biweekly_event  # noqa: F401
+    import models.care_birthday_batch  # noqa: F401
     import models.care_birthday_member  # noqa: F401
     import models.events_item  # noqa: F401
     import models.member  # noqa: F401

@@ -69,6 +69,12 @@ def main() -> None:
         application
     )
 
+    # CARE Birthday comes before the main control panel
+    # because it handles some specific CARE button callbacks.
+    register_care_birthday_handlers(
+        application
+    )
+
     register_control_panel_handlers(
         application
     )
@@ -90,10 +96,6 @@ def main() -> None:
     )
 
     register_events_handlers(
-        application
-    )
-
-    register_care_birthday_handlers(
         application
     )
 
