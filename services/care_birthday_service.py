@@ -313,8 +313,10 @@ def seed_care_birthday_roster() -> tuple[int, int]:
             else:
                 existing.birthday_day = birthday_day
                 existing.birthday_month = birthday_month
-                existing.is_active = True
 
+                # Keep the current active/inactive state.
+                # This prevents a manually removed birthday member
+                # from being reactivated by "Sync Birthday Roster".
                 updated += 1
 
         session.commit()
@@ -349,6 +351,225 @@ def get_care_birthdays_for_month(
         return list(
             members
         )
+
+
+
+def get_all_active_care_birthday_members() -> list[CareBirthdayMember]:
+    """Return the complete active CARE Birthday roster."""
+
+    with SessionLocal() as session:
+
+        members = session.scalars(
+            select(CareBirthdayMember)
+            .where(
+                CareBirthdayMember.is_active.is_(True),
+            )
+            .order_by(
+                CareBirthdayMember.birthday_month,
+                CareBirthdayMember.birthday_day,
+                CareBirthdayMember.display_name,
+            )
+        ).all()
+
+        return list(
+            members
+        )
+
+
+def get_care_birthday_member_by_name(
+    display_name: str,
+) -> CareBirthdayMember | None:
+    """Find one CARE Birthday member by display name."""
+
+    cleaned_name = display_name.strip()
+
+    if not cleaned_name:
+        return None
+
+    with SessionLocal() as session:
+
+        member = session.scalar(
+            select(CareBirthdayMember).where(
+                func.lower(
+                    CareBirthdayMember.display_name
+                )
+                == cleaned_name.lower()
+            )
+        )
+
+        return member
+
+
+def get_care_birthday_member_by_id(
+    member_id: int,
+) -> CareBirthdayMember | None:
+    """Find one CARE Birthday member by database ID."""
+
+    with SessionLocal() as session:
+
+        return session.get(
+            CareBirthdayMember,
+            member_id,
+        )
+
+
+def add_care_birthday_member(
+    display_name: str,
+    birthday_day: int,
+    birthday_month: int,
+) -> tuple[CareBirthdayMember, bool]:
+    """
+    Add a birthday member.
+
+    Returns:
+        (member, reactivated_existing_member)
+    """
+
+    cleaned_name = " ".join(
+        display_name.split()
+    )
+
+    if not cleaned_name:
+        raise ValueError(
+            "Name cannot be empty."
+        )
+
+    # Use leap year 2000 so 29 February is accepted.
+    date(
+        2000,
+        birthday_month,
+        birthday_day,
+    )
+
+    with SessionLocal() as session:
+
+        existing = session.scalar(
+            select(CareBirthdayMember).where(
+                func.lower(
+                    CareBirthdayMember.display_name
+                )
+                == cleaned_name.lower()
+            )
+        )
+
+        if existing is not None:
+
+            if existing.is_active:
+                raise ValueError(
+                    "That person is already in the CARE Birthday roster."
+                )
+
+            existing.display_name = cleaned_name
+            existing.birthday_day = birthday_day
+            existing.birthday_month = birthday_month
+            existing.is_active = True
+
+            session.commit()
+            session.refresh(
+                existing
+            )
+
+            return (
+                existing,
+                True,
+            )
+
+        member = CareBirthdayMember(
+            display_name=cleaned_name,
+            birthday_day=birthday_day,
+            birthday_month=birthday_month,
+            is_active=True,
+        )
+
+        session.add(
+            member
+        )
+
+        session.commit()
+        session.refresh(
+            member
+        )
+
+        return (
+            member,
+            False,
+        )
+
+
+def deactivate_care_birthday_member(
+    member_id: int,
+) -> CareBirthdayMember | None:
+    """
+    Remove a member from the active birthday roster.
+
+    This is a soft delete so past workflow data stays intact.
+    """
+
+    with SessionLocal() as session:
+
+        member = session.get(
+            CareBirthdayMember,
+            member_id,
+        )
+
+        if (
+            member is None
+            or not member.is_active
+        ):
+            return None
+
+        member.is_active = False
+
+        session.commit()
+        session.refresh(
+            member
+        )
+
+        return member
+
+
+def format_care_birthday_roster() -> str:
+    """Format the complete active CARE Birthday roster."""
+
+    members = get_all_active_care_birthday_members()
+
+    if not members:
+        return (
+            "🎂 CARE BIRTHDAY ROSTER\n\n"
+            "No active birthday members are registered."
+        )
+
+    lines = [
+        "🎂 CARE BIRTHDAY ROSTER",
+        "",
+        f"👥 Total active members: {len(members)}",
+    ]
+
+    current_month = None
+
+    for member in members:
+
+        if member.birthday_month != current_month:
+
+            current_month = member.birthday_month
+
+            lines.extend(
+                [
+                    "",
+                    f"📅 {month_name[current_month].upper()}",
+                ]
+            )
+
+        lines.append(
+            f"• {member.display_name} — "
+            f"{member.birthday_day} "
+            f"{month_name[member.birthday_month][:3]}"
+        )
+
+    return "\n".join(
+        lines
+    )
+
 
 
 # =========================================================
