@@ -379,6 +379,22 @@ def build_care_birthday_menu() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
+                "📋 Birthday Roster",
+                callback_data="panel:care:birthday:roster",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "➕ Add Birthday",
+                callback_data="panel:care:birthday:add",
+            ),
+            InlineKeyboardButton(
+                "🗑 Remove Birthday",
+                callback_data="panel:care:birthday:remove",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 "🔄 Sync Birthday Roster",
                 callback_data="panel:care:birthday:sync",
             ),
@@ -1073,6 +1089,64 @@ async def handle_control_panel_callback(
             "/carebirthdaymonth MM-YYYY\n\n"
             "Example:\n"
             "/carebirthdaymonth 10-2026",
+            reply_markup=build_care_birthday_back_menu(),
+        )
+
+        return
+
+    if callback_data == "panel:care:birthday:roster":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "📋 BIRTHDAY ROSTER\n\n"
+            "Send:\n"
+            "/carebirthdayroster\n\n"
+            "Dobby will list every active CARE Birthday member "
+            "in calendar order.",
+            reply_markup=build_care_birthday_back_menu(),
+        )
+
+        return
+
+    if callback_data == "panel:care:birthday:add":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "➕ ADD CARE BIRTHDAY\n\n"
+            "Send:\n"
+            "/addcarebirthday NAME | DD-MM\n\n"
+            "Example:\n"
+            "/addcarebirthday John Tan | 14-03\n\n"
+            "Dobby will reject duplicate active names "
+            "and validate the birthday date.",
+            reply_markup=build_care_birthday_back_menu(),
+        )
+
+        return
+
+    if callback_data == "panel:care:birthday:remove":
+
+        if not is_care_leader(
+            user_id
+        ):
+            return
+
+        await query.edit_message_text(
+            "🗑 REMOVE CARE BIRTHDAY\n\n"
+            "Send:\n"
+            "/removecarebirthday NAME\n\n"
+            "Example:\n"
+            "/removecarebirthday John Tan\n\n"
+            "Dobby will show the matching birthday and ask "
+            "for confirmation before removing them.",
             reply_markup=build_care_birthday_back_menu(),
         )
 
