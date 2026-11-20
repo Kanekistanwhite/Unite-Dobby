@@ -34,7 +34,12 @@ from services.care_birthday_service import (
     format_care_annual_prep,
     format_care_birthday_batch,
     format_care_birthday_month,
+    format_care_birthday_roster,
     format_celebrant_list,
+    add_care_birthday_member,
+    deactivate_care_birthday_member,
+    get_care_birthday_member_by_id,
+    get_care_birthday_member_by_name,
     get_current_annual_prep_year,
     get_current_care_birthday_period,
     get_first_sunday,
@@ -351,6 +356,37 @@ def parse_month_year(
 
     return (
         year,
+        month,
+    )
+
+
+def parse_day_month(
+    value: str,
+) -> tuple[int, int]:
+    """Convert DD-MM into day/month."""
+
+    day_text, month_text = value.split(
+        "-",
+        maxsplit=1,
+    )
+
+    day = int(
+        day_text
+    )
+
+    month = int(
+        month_text
+    )
+
+    # Leap year allows 29 February.
+    datetime(
+        2000,
+        month,
+        day,
+    )
+
+    return (
+        day,
         month,
     )
 
@@ -884,6 +920,187 @@ async def scheduled_care_birthday_job(
         "CARE Birthday check complete. "
         "%s reminder(s) sent.",
         sent_count,
+    )
+
+
+# =========================================================
+# ROSTER MANAGEMENT COMMANDS
+# =========================================================
+
+async def care_birthday_roster_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Show the complete active CARE Birthday roster."""
+
+    if not await check_care_permission(
+        update
+    ):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    await message.reply_text(
+        format_care_birthday_roster()
+    )
+
+
+async def add_care_birthday_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Add or reactivate one CARE Birthday member."""
+
+    if not await check_care_permission(
+        update
+    ):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    raw = " ".join(
+        context.args
+    ).strip()
+
+    if "|" not in raw:
+        await message.reply_text(
+            "Usage:\n"
+            "/addcarebirthday NAME | DD-MM\n\n"
+            "Example:\n"
+            "/addcarebirthday John Tan | 14-03"
+        )
+        return
+
+    name_text, birthday_text = [
+        part.strip()
+        for part in raw.split(
+            "|",
+            maxsplit=1,
+        )
+    ]
+
+    if not name_text:
+        await message.reply_text(
+            "❌ Name cannot be empty."
+        )
+        return
+
+    try:
+        day, month = parse_day_month(
+            birthday_text
+        )
+
+    except (
+        ValueError,
+        TypeError,
+    ):
+        await message.reply_text(
+            "❌ Invalid birthday.\n\n"
+            "Use DD-MM, for example:\n"
+            "/addcarebirthday John Tan | 14-03"
+        )
+        return
+
+    try:
+        member, reactivated = add_care_birthday_member(
+            name_text,
+            day,
+            month,
+        )
+
+    except ValueError as error:
+        await message.reply_text(
+            f"❌ {error}"
+        )
+        return
+
+    action = (
+        "reactivated"
+        if reactivated
+        else "added"
+    )
+
+    await message.reply_text(
+        "✅ CARE BIRTHDAY UPDATED\n\n"
+        f"{member.display_name} was {action}.\n"
+        f"Birthday: {member.birthday_day} "
+        f"{month_name[member.birthday_month]}"
+    )
+
+
+async def remove_care_birthday_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """Start removal of one CARE Birthday member."""
+
+    if not await check_care_permission(
+        update
+    ):
+        return
+
+    message = update.effective_message
+
+    if message is None:
+        return
+
+    name = " ".join(
+        context.args
+    ).strip()
+
+    if not name:
+        await message.reply_text(
+            "Usage:\n"
+            "/removecarebirthday NAME\n\n"
+            "Example:\n"
+            "/removecarebirthday John Tan"
+        )
+        return
+
+    member = get_care_birthday_member_by_name(
+        name
+    )
+
+    if (
+        member is None
+        or not member.is_active
+    ):
+        await message.reply_text(
+            "❌ No active CARE Birthday member "
+            "was found with that name."
+        )
+        return
+
+    await message.reply_text(
+        "🗑 REMOVE CARE BIRTHDAY\n\n"
+        f"Name: {member.display_name}\n"
+        f"Birthday: {member.birthday_day} "
+        f"{month_name[member.birthday_month]}\n\n"
+        "Remove this person from the active "
+        "CARE Birthday roster?",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "✅ Confirm Remove",
+                        callback_data=(
+                            "carebirthday:removeconfirm:"
+                            f"{member.id}"
+                        ),
+                    ),
+                    InlineKeyboardButton(
+                        "❌ Cancel",
+                        callback_data="carebirthday:removecancel",
+                    ),
+                ]
+            ]
+        ),
     )
 
 
@@ -1526,6 +1743,59 @@ async def handle_care_birthday_callback(
         return
 
     # -----------------------------------------------------
+    # CONFIRM / CANCEL ROSTER REMOVAL
+    # -----------------------------------------------------
+
+    if callback_data.startswith(
+        "carebirthday:removeconfirm:"
+    ):
+
+        member_id = int(
+            callback_data.split(
+                ":"
+            )[2]
+        )
+
+        member = get_care_birthday_member_by_id(
+            member_id
+        )
+
+        if (
+            member is None
+            or not member.is_active
+        ):
+            await query.edit_message_text(
+                "❌ This birthday member is already inactive "
+                "or no longer exists."
+            )
+            return
+
+        removed = deactivate_care_birthday_member(
+            member_id
+        )
+
+        if removed is None:
+            await query.edit_message_text(
+                "❌ The birthday member could not be removed."
+            )
+            return
+
+        await query.edit_message_text(
+            "✅ CARE BIRTHDAY REMOVED\n\n"
+            f"{removed.display_name} has been removed "
+            "from the active CARE Birthday roster.\n\n"
+            "Their historical workflow records are retained."
+        )
+        return
+
+    if callback_data == "carebirthday:removecancel":
+
+        await query.edit_message_text(
+            "✅ Birthday removal cancelled."
+        )
+        return
+
+    # -----------------------------------------------------
     # VIEW MONTHLY BATCH
     # -----------------------------------------------------
 
@@ -1707,6 +1977,27 @@ def register_care_birthday_handlers(
         CommandHandler(
             "setupcarebirthdays",
             setup_care_birthdays_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "carebirthdayroster",
+            care_birthday_roster_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "addcarebirthday",
+            add_care_birthday_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "removecarebirthday",
+            remove_care_birthday_command,
         )
     )
 
